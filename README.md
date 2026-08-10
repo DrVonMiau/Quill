@@ -9,11 +9,14 @@ runtime. It shares its visual language (grey desktop + paper card + segmented
 pill tabs, teal/gold accents) with its sibling app **Lyre**.
 
 ## Features
-- **Want to read / Reading / Read** shelves, plus an **All** view.
+- **Read / Reading / To read** shelves as segmented tabs.
+- **Master–detail** layout: a paper card of cover tiles with an info panel that
+  slides in when you select a book (cover, status, rating, dates, summary).
+- A three-way **status control** to move a book between shelves in place.
 - **Add books** by searching Open Library, with cover art fetched automatically.
-- **Star ratings** and per-book **notes**.
-- **Search** your library by title or author.
-- Light and dark themes that track the system.
+- **Star ratings** and an autosaving per-book **summary**.
+- A **cover-size slider** to scale the grid tiles, plus title/author search.
+- Light and dark themes that track the system, in the teal & gold house palette.
 
 ## Build & run (Flatpak)
 ```sh

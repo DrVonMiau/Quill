@@ -4,4 +4,11 @@
     <file preprocess="xml-stripblanks">window.ui</file>
     <file compressed="true">style.css</file>
   </gresource>
+  <gresource prefix="/io/github/drvonmiau/Quill/icons/scalable/actions">
+    <file preprocess="xml-stripblanks" alias="quill-status-read-symbolic.svg">icons/scalable/actions/quill-status-read-symbolic.svg</file>
+    <file preprocess="xml-stripblanks" alias="quill-status-reading-symbolic.svg">icons/scalable/actions/quill-status-reading-symbolic.svg</file>
+    <file preprocess="xml-stripblanks" alias="quill-status-toread-symbolic.svg">icons/scalable/actions/quill-status-toread-symbolic.svg</file>
+    <file preprocess="xml-stripblanks" alias="quill-star-filled-symbolic.svg">icons/scalable/actions/quill-star-filled-symbolic.svg</file>
+    <file preprocess="xml-stripblanks" alias="quill-star-empty-symbolic.svg">icons/scalable/actions/quill-star-empty-symbolic.svg</file>
+  </gresource>
 </gresources>

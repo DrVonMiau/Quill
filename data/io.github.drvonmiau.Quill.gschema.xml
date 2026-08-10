@@ -24,12 +24,23 @@
 			<summary>Window maximized</summary>
 		</key>
 		<key name="last-shelf" type="s">
-			<default>'all'</default>
+			<choices>
+				<choice value="read"/>
+				<choice value="reading"/>
+				<choice value="want"/>
+			</choices>
+			<default>'reading'</default>
 			<summary>Last active shelf</summary>
 		</key>
 		<key name="sort-books" type="s">
 			<default>'recent'</default>
 			<summary>Book sort order</summary>
+		</key>
+		<key name="cover-size" type="i">
+			<range min="110" max="200"/>
+			<default>140</default>
+			<summary>Cover tile width</summary>
+			<description>Width in pixels of the book cover tiles in the library grid.</description>
 		</key>
 	</schema>
 </schemalist>
