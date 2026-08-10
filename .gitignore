@@ -1,4 +1,5 @@
-__pycache__/
-*.pyc
+_build/
 _flatpak/
 .flatpak-builder/
+__pycache__/
+*.pyc

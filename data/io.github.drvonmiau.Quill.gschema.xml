@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist gettext-domain="quill">
+	<schema id="io.github.drvonmiau.Quill" path="/io/github/drvonmiau/Quill/">
+		<key name="theme" type="s">
+			<choices>
+				<choice value="light"/>
+				<choice value="dark"/>
+				<choice value="system"/>
+			</choices>
+			<default>'system'</default>
+			<summary>Color theme</summary>
+			<description>Whether to use the light theme, the dark theme, or follow the system preference.</description>
+		</key>
+		<key name="window-width" type="i">
+			<default>1100</default>
+			<summary>Window width</summary>
+		</key>
+		<key name="window-height" type="i">
+			<default>720</default>
+			<summary>Window height</summary>
+		</key>
+		<key name="window-maximized" type="b">
+			<default>false</default>
+			<summary>Window maximized</summary>
+		</key>
+		<key name="last-shelf" type="s">
+			<default>'all'</default>
+			<summary>Last active shelf</summary>
+		</key>
+		<key name="sort-books" type="s">
+			<default>'recent'</default>
+			<summary>Book sort order</summary>
+		</key>
+	</schema>
+</schemalist>

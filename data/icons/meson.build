@@ -1,11 +1,11 @@
-application_id = 'io.github.drvonmiau.Lyre'
+application_id = 'io.github.drvonmiau.Quill'
 
-# App icon (512x512): the muse logo tile, cut out with transparent rounded
-# corners. The uncut master artwork is kept outside the repo.
-png_dir = 'hicolor' / '512x512' / 'apps'
+# App icon: the final artwork (teal tile with a gold quill-in-inkpot) as a
+# 512x512 PNG in the hicolor theme.
+icon_dir = 'hicolor' / '512x512' / 'apps'
 install_data(
-  png_dir / ('@0@.png').format(application_id),
-  install_dir: get_option('datadir') / 'icons' / png_dir
+  icon_dir / ('@0@.png').format(application_id),
+  install_dir: get_option('datadir') / 'icons' / icon_dir
 )
 
 symbolic_dir = 'hicolor' / 'symbolic' / 'apps'

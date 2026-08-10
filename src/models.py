@@ -1,40 +1,20 @@
+"""GObject model wrapping a book row, so a Gio.ListStore can drive the grid."""
 from gi.repository import GObject
 
 
-class Track(GObject.Object):
-    __gtype_name__ = "Track"
-    id = GObject.Property(type=int, default=0)
-    path = GObject.Property(type=str, default="")
-    title = GObject.Property(type=str, default="")
-    artist = GObject.Property(type=str, default="")
-    album = GObject.Property(type=str, default="")
-    album_id = GObject.Property(type=int, default=0)
-    track_no = GObject.Property(type=int, default=0)
-    duration = GObject.Property(type=float, default=0.0)
-    favorite = GObject.Property(type=bool, default=False)
+class Book(GObject.Object):
+    __gtype_name__ = "QuillBook"
 
-
-class Album(GObject.Object):
-    __gtype_name__ = "Album"
-    id = GObject.Property(type=int, default=0)
-    title = GObject.Property(type=str, default="")
-    artist = GObject.Property(type=str, default="")
-    year = GObject.Property(type=int, default=0)
-    cover_path = GObject.Property(type=str, default="")
-
-
-class Playlist(GObject.Object):
-    __gtype_name__ = "Playlist"
-    id = GObject.Property(type=int, default=0)
-    name = GObject.Property(type=str, default="")
-    track_count = GObject.Property(type=int, default=0)
-    cover_path = GObject.Property(type=str, default="")
-
-
-class Artist(GObject.Object):
-    __gtype_name__ = "Artist"
-    id = GObject.Property(type=int, default=0)
-    name = GObject.Property(type=str, default="")
-    photo_path = GObject.Property(type=str, default="")
-    album_count = GObject.Property(type=int, default=0)
-    track_count = GObject.Property(type=int, default=0)
+    def __init__(self, id, title, author="", year=0, pages=0, cover_path="",
+                 status="want", rating=0, olid="", notes=""):
+        super().__init__()
+        self.id = id
+        self.title = title
+        self.author = author or ""
+        self.year = year or 0
+        self.pages = pages or 0
+        self.cover_path = cover_path or ""
+        self.status = status or "want"
+        self.rating = rating or 0
+        self.olid = olid or ""
+        self.notes = notes or ""

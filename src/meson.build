@@ -1,9 +1,9 @@
 pkgdatadir = get_option('prefix') / get_option('datadir') / meson.project_name()
-moduledir = pkgdatadir / 'lyre'
+moduledir = pkgdatadir / 'quill'
 gnome = import('gnome')
 
-gnome.compile_resources('lyre',
-  'lyre.gresource.xml',
+gnome.compile_resources('quill',
+  'quill.gresource.xml',
   gresource_bundle: true,
   install: true,
   install_dir: pkgdatadir,
@@ -18,24 +18,22 @@ conf.set('localedir', get_option('prefix') / get_option('localedir'))
 conf.set('pkgdatadir', pkgdatadir)
 
 configure_file(
-  input: 'lyre.in',
-  output: 'lyre',
+  input: 'quill.in',
+  output: 'quill',
   configuration: conf,
   install: true,
   install_dir: get_option('bindir'),
   install_mode: 'r-xr-xr-x'
 )
 
-lyre_sources = [
+quill_sources = [
   '__init__.py',
   'main.py',
   'window.py',
   'library.py',
-  'metadata.py',
   'models.py',
-  'mpris.py',
-  'player.py',
+  'openlibrary.py',
   'widgets.py',
 ]
 
-install_data(lyre_sources, install_dir: moduledir)
+install_data(quill_sources, install_dir: moduledir)

@@ -1,9 +1,8 @@
-"""Small reusable widgets: the striped placeholder art swatch used for
-artists/albums/tracks until real cover art or an artist photo is fetched.
+"""Reusable widgets: a portrait book-cover tile that shows the cover image
+when present and a diagonal-striped placeholder (with a caption) otherwise.
 
-The stripes are drawn with GTK4's native Gtk.Snapshot/GSK API rather than
-Cairo, so this doesn't pull in a pycairo dependency that may not be present
-in the Flatpak runtime.
+Covers are book-shaped (portrait), so the tile is a fixed width with a 3:2
+height. It paints with GTK4's native Snapshot/GSK API — no pycairo needed.
 """
 import math
 
@@ -11,13 +10,13 @@ from gi.repository import Graphene, Gsk, Gtk
 
 STRIPE_STEP = 7
 STRIPE_WIDTH = 2.4
+COVER_RATIO = 1.5  # height / width — standard-ish book proportion
 
 
 class _StripeArea(Gtk.Widget):
-    """Fills its allocated area with a 45-degree repeating stripe pattern.
-    The stripe color is the widget's CSS `color`, so it follows the theme."""
+    """Fills its area with a 45° repeating stripe in the widget's CSS color."""
 
-    __gtype_name__ = "LyreStripeArea"
+    __gtype_name__ = "QuillStripeArea"
 
     def do_snapshot(self, snapshot):
         width = self.get_width()
@@ -32,30 +31,26 @@ class _StripeArea(Gtk.Widget):
         diag = math.hypot(width, height)
         y = -diag
         while y < diag:
-            stripe = Graphene.Rect().init(-diag, y, diag * 2, STRIPE_WIDTH)
-            snapshot.append_color(rgba, stripe)
+            snapshot.append_color(rgba, Graphene.Rect().init(-diag, y, diag * 2, STRIPE_WIDTH))
             y += STRIPE_STEP
         snapshot.restore()
         snapshot.pop()
 
 
-class Swatch(Gtk.Widget):
-    """A square artwork swatch: shows a Gtk.Picture when a path is set,
-    otherwise a diagonal-striped placeholder with a small caption chip.
+class Cover(Gtk.Widget):
+    """A portrait cover tile: a Gtk.Picture (content-fit cover, clipped to the
+    rounded corners) when a path is set, else a striped placeholder with a
+    caption. Manual measure/allocate keeps the width:height locked to a book
+    proportion regardless of the image's real aspect."""
 
-    Implemented as a plain widget with manual measure/allocate so it is
-    always square, no matter the aspect ratio of the image inside (the
-    picture crops via content-fit cover and is clipped to the corners).
-    """
+    __gtype_name__ = "QuillCover"
 
-    __gtype_name__ = "LyreSwatch"
-
-    def __init__(self, placeholder_text, size=128):
+    def __init__(self, placeholder_text="", width=132):
         super().__init__()
-        self._size = size
-        self.set_overflow(Gtk.Overflow.HIDDEN)
-        self.add_css_class("swatch")
+        self._width = width
         self._placeholder_text = placeholder_text
+        self.set_overflow(Gtk.Overflow.HIDDEN)
+        self.add_css_class("cover")
 
         self._picture = Gtk.Picture(content_fit=Gtk.ContentFit.COVER)
         self._picture.set_parent(self)
@@ -64,12 +59,13 @@ class Swatch(Gtk.Widget):
         self._area.set_parent(self)
 
         self._label = Gtk.Label(label=placeholder_text or "")
-        self._label.add_css_class("swatch-caption")
+        self._label.add_css_class("cover-caption")
+        self._label.set_wrap(True)
+        self._label.set_justify(Gtk.Justification.CENTER)
         self._label.set_parent(self)
 
         self.set_path(None)
-        # PyGObject doesn't reliably invoke do_dispose overrides, so unparent
-        # the manually-parented children on ::destroy instead.
+        # PyGObject doesn't reliably run do_dispose, so unparent on ::destroy.
         self.connect("destroy", self._on_destroy)
 
     def _on_destroy(self, *_args):
@@ -77,27 +73,29 @@ class Swatch(Gtk.Widget):
             if child.get_parent() is self:
                 child.unparent()
 
-    def do_measure(self, orientation, for_size):
-        for child in (self._picture, self._area, self._label):
-            child.measure(orientation, -1)
-        return (self._size, self._size, -1, -1)
+    @property
+    def _height(self):
+        return int(self._width * COVER_RATIO)
 
-    def do_size_allocate(self, width, height, baseline):
+    def do_measure(self, orientation, _for_size):
+        size = self._width if orientation == Gtk.Orientation.HORIZONTAL else self._height
+        return (size, size, -1, -1)
+
+    def do_size_allocate(self, width, height, _baseline):
         for child in (self._picture, self._area):
             if child.get_visible():
                 child.allocate(width, height, -1, None)
         if self._label.get_visible():
-            _lmin, lnat, _b1, _b2 = self._label.measure(Gtk.Orientation.HORIZONTAL, -1)
-            label_w = min(lnat, width)
-            _hmin, hnat, _b3, _b4 = self._label.measure(Gtk.Orientation.VERTICAL, label_w)
+            _min, lnat, _b1, _b2 = self._label.measure(Gtk.Orientation.HORIZONTAL, -1)
+            label_w = min(lnat, width - 16)
+            _m2, hnat, _b3, _b4 = self._label.measure(Gtk.Orientation.VERTICAL, label_w)
             transform = Gsk.Transform.new().translate(
-                Graphene.Point().init((width - label_w) / 2, (height - hnat) / 2)
-            )
+                Graphene.Point().init((width - label_w) / 2, (height - hnat) / 2))
             self._label.allocate(label_w, hnat, -1, transform)
 
-    def set_size(self, size):
-        if size != self._size:
-            self._size = size
+    def set_size(self, width):
+        if width != self._width:
+            self._width = width
             self.queue_resize()
 
     def set_placeholder(self, text):

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Quill
+Type=Application
+Exec=quill
+Icon=io.github.drvonmiau.Quill
+Categories=GTK;Office;Literature;
+StartupNotify=true
+# Translators: Search terms to find this application. Do NOT translate or localize the semicolons.
+Keywords=books;reading;library;tracker;shelf;

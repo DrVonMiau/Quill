@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+	<id>io.github.drvonmiau.Quill</id>
+	<metadata_license>CC0-1.0</metadata_license>
+	<project_license>GPL-3.0-or-later</project_license>
+	<name>Quill</name>
+	<summary>Track the books you read</summary>
+	<developer id="io.github.drvonmiau">
+		<name>Daniel</name>
+	</developer>
+	<description>
+	  <p>
+	    Quill is a calm, offline-first reading tracker. Keep shelves for the
+	    books you want to read, are reading, and have finished; rate them and
+	    jot notes; and add titles in seconds by searching Open Library.
+	  </p>
+	  <p>Features:</p>
+	  <ul>
+	    <li>Want to read / Reading / Read shelves</li>
+	    <li>Add books by searching Open Library, with cover art</li>
+	    <li>Star ratings and per-book notes</li>
+	    <li>Search your library by title or author</li>
+	    <li>Light and dark themes</li>
+	  </ul>
+	</description>
+	<launchable type="desktop-id">io.github.drvonmiau.Quill.desktop</launchable>
+	<content_rating type="oars-1.1"/>
+	<branding>
+		<color type="primary" scheme_preference="light">#d3efe9</color>
+		<color type="primary" scheme_preference="dark">#173d38</color>
+	</branding>
+	<url type="homepage">https://github.com/DrVonMiau/quill</url>
+	<url type="bugtracker">https://github.com/DrVonMiau/quill/issues</url>
+	<url type="vcs-browser">https://github.com/DrVonMiau/quill</url>
+	<requires>
+		<display_length compare="ge">768</display_length>
+	</requires>
+	<supports>
+		<control>keyboard</control>
+		<control>pointing</control>
+	</supports>
+	<releases>
+		<release version="0.1.0" date="2026-08-10">
+			<description>
+				<p>Initial release.</p>
+			</description>
+		</release>
+	</releases>
+</component>
