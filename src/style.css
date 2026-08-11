@@ -1,224 +1,229 @@
-/* Quill — Dr. von Miau design system.
-   Greys build the surfaces (desktop → paper → controls), teal is the
-   interactive/selection accent and gold is reserved for star ratings.
-   Light values are the defaults; the `.dark` overrides carry the exact
-   dark-mode tokens from the Figma variables. IBM Plex Sans/Mono are bundled
-   by the Flatpak manifest. */
+/* Quill — shares Lyre/Easel's design system: surfaces come from libadwaita's
+   named colors (@window_bg_color, @card_bg_color, @window_fg_color, …) so both
+   themes track the system palette, and colour is reserved for accents —
+   turquoise for interactive elements and the selection glow, gold for star
+   ratings. Secondary text is a turquoise tint (darker on light, lighter on
+   dark). IBM Plex Sans/Mono are bundled by the Flatpak manifest. */
 
-/* ----- palette tokens (light defaults) ----- */
-@define-color quill_desktop  #ebeae7;
-@define-color quill_paper    #ffffff;
-@define-color quill_surface1 #e7e6e2;   /* inactive control */
-@define-color quill_surface2 #d7d5d0;   /* active control */
-@define-color quill_text     #232323;
-@define-color quill_muted    #6d6d6d;
-@define-color quill_icon_dim #6d6d6d;
-@define-color quill_teal1    #15aaa8;
-@define-color quill_teal2    #0c615d;
-@define-color quill_gold     #c58a2f;
-@define-color quill_line     alpha(@quill_text, 0.10);
+/* Interactive accent (turquoise) */
+@define-color quill_teal #15aaa8;
+@define-color quill_teal_light #50d9d5;
+/* Ratings (gold) */
+@define-color quill_gold #b9822e;
+@define-color quill_gold_light #dea555;
+/* Secondary text */
+@define-color quill_text_soft #4d7f7c;
+@define-color quill_text_soft_dark #9cc7c3;
 
-/* GTK CSS can't scope @define-color, so the named colors above are the LIGHT
-   set and every accent-bearing rule has a `window.dark` counterpart that
-   restates the exact dark-mode token. */
-
-/* ---------- window / desktop ---------- */
-
-.quill-root {
-  background-color: @quill_desktop;
-  color: @quill_text;
+/* The desktop behind the paper card: the system window colour, shaded a touch
+   on light so the card still reads; the raw window colour on dark. */
+.root-bg {
+  background-color: shade(@window_bg_color, 0.94);
   font-family: "IBM Plex Sans", sans-serif;
 }
-window.dark.quill-root {
-  background-color: #242424;
-  color: #ffffff;
+window.dark .root-bg {
+  background-color: @window_bg_color;
 }
 
-headerbar.flat {
-  background: transparent;
-  box-shadow: none;
+link,
+.root-bg link {
+  color: @quill_teal;
+}
+
+switch:checked,
+checkbutton check:checked,
+checkbutton radio:checked {
+  background-color: @quill_teal;
+}
+
+/* ---------- custom titlebar ---------- */
+
+.titlebar-icon {
+  min-width: 26px;
+  min-height: 26px;
+  padding: 0;
+  color: alpha(@window_fg_color, 0.55);
+}
+.titlebar-icon:hover,
+.titlebar-icon:checked {
+  color: @window_fg_color;
+  background-color: alpha(@window_fg_color, 0.07);
+}
+
+/* Cover-size slider: a thin filled bar with a round grab knob (Easel style). */
+.cover-scale {
+  min-height: 2px;
+  min-width: 4px;
+  padding: 8px 0;
+}
+.cover-scale trough {
+  min-height: 2px;
+  min-width: 4px;
+  border-radius: 1px;
+  background-color: alpha(@window_fg_color, 0.18);
   border: none;
-  min-height: 40px;
+  box-shadow: none;
+}
+.cover-scale highlight {
+  min-height: 2px;
+  border-radius: 1px;
+  background-color: @quill_teal;
+  box-shadow: none;
+}
+.cover-scale slider {
+  min-width: 14px;
+  min-height: 14px;
+  margin: -6px;
+  padding: 0;
+  border-radius: 9999px;
+  background-color: @quill_teal;
+  border: 1px solid @window_bg_color;
+  box-shadow: 0 1px 3px alpha(#000, 0.25);
+  opacity: 1;
 }
 
-.cover-size-box scale trough {
-  min-height: 4px;
-  background-color: @quill_surface2;
-}
-window.dark .cover-size-box scale trough {
-  background-color: #4c4c4f;
-}
-.cover-size-box scale highlight {
-  background-color: @quill_teal1;
-}
-window.dark .cover-size-box scale highlight {
-  background-color: #50d9d5;
-}
-.cover-size-box scale slider {
-  min-width: 13px;
-  min-height: 13px;
-  background-color: #ffffff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
-}
-.cover-size-box .dim-label {
-  color: @quill_muted;
-}
-window.dark .cover-size-box .dim-label {
-  color: #8f8f8f;
-}
+/* ---------- tabs + search ---------- */
 
-/* ---------- tabs bar ---------- */
-
-.tabs .tab {
+.tab-group {
+  background-color: alpha(@window_fg_color, 0.06);
+  border-radius: 12px;
+  padding: 3px;
+}
+.tab-sep {
+  color: alpha(@window_fg_color, 0.22);
+  margin: 0 4px;
+  padding-bottom: 2px;
+}
+.tab-btn {
   font-family: "IBM Plex Mono", monospace;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
-  color: @quill_muted;
-  background: transparent;
-  border: none;
-  box-shadow: none;
+  letter-spacing: 0.06em;
+  color: alpha(@window_fg_color, 0.55);
   padding: 5px 14px;
   min-height: 0;
-  border-radius: 8px;
+  border-radius: 9px;
+  background: none;
 }
-window.dark .tabs .tab {
-  color: #8f8f8f;
+/* Some fonts paint ascenders above their line box and GTK clips at the label's
+   allocation, so the label node itself needs the headroom. */
+.tab-btn label {
+  padding-top: 3px;
 }
-.tabs .tab:hover {
-  background-color: alpha(@quill_text, 0.06);
-  color: @quill_text;
+.tab-btn:hover {
+  color: @window_fg_color;
 }
-window.dark .tabs .tab:hover {
-  background-color: alpha(#ffffff, 0.06);
-  color: #ffffff;
-}
-.tabs .tab:checked {
-  background-color: @quill_surface2;
-  color: @quill_text;
-}
-window.dark .tabs .tab:checked {
-  background-color: #4c4c4f;
-  color: #ffffff;
+.tab-btn.tab-active {
+  color: @window_fg_color;
+  font-weight: 600;
+  background-color: @card_bg_color;
+  box-shadow: 0 1px 3px alpha(#000, 0.12);
 }
 
-.tool-btn {
-  color: @quill_muted;
-  min-width: 30px;
-  min-height: 30px;
-  border-radius: 8px;
+.search-entry {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12px;
+  color: @window_fg_color;
+  border: 1px solid alpha(@window_fg_color, 0.15);
+  border-radius: 7px;
+  padding: 7px 12px;
+  background-color: @view_bg_color;
+  min-height: 0;
 }
-window.dark .tool-btn {
-  color: #8f8f8f;
-}
-.tool-btn:hover {
-  background-color: alpha(@quill_text, 0.07);
-  color: @quill_text;
-}
-window.dark .tool-btn:hover {
-  background-color: alpha(#ffffff, 0.08);
-  color: #ffffff;
-}
-.tool-btn:checked {
-  background-color: @quill_surface2;
-  color: @quill_text;
-}
-window.dark .tool-btn:checked {
-  background-color: #4c4c4f;
-  color: #ffffff;
+.search-entry:focus-within {
+  border-color: @quill_teal;
 }
 
 /* ---------- paper card + grid ---------- */
 
 .paper {
-  background-color: @quill_paper;
-  border-radius: 16px;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.10);
-}
-window.dark .paper {
-  background-color: #2c2c2c;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+  background-color: @card_bg_color;
+  border-radius: 14px;
+  box-shadow: 0 1px 2px alpha(#000, 0.04), 0 12px 32px alpha(#000, 0.08);
 }
 .paper scrolledwindow,
 .paper gridview {
-  background: transparent;
+  background: none;
 }
 
-.card-grid {
-  background: transparent;
+gridview.card-grid,
+gridview.card-grid > child {
+  background: none;
+  box-shadow: none;
+  outline: none;
 }
-.card-grid > child {
-  padding: 0;
-  border-radius: 12px;
-  background: transparent;
+gridview.card-grid > child:hover,
+gridview.card-grid > child:focus {
+  background: none;
+  box-shadow: none;
 }
-.card-grid > child:hover .card-cover {
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.30);
+gridview.card-grid > child:hover .card-cover {
+  box-shadow: 0 8px 22px alpha(#000, 0.22);
 }
-.card-grid > child:selected {
-  background: transparent;
+gridview.card-grid > child:selected {
+  background: none;
 }
-.card-grid > child:selected .card-cover {
-  box-shadow: 0 0 0 3px @quill_teal1, 0 6px 18px rgba(0, 0, 0, 0.35);
-}
-window.dark .card-grid > child:selected .card-cover {
-  box-shadow: 0 0 0 3px #50d9d5, 0 6px 18px rgba(0, 0, 0, 0.5);
+gridview.card-grid > child:selected .card-cover {
+  box-shadow: 0 0 0 3px @quill_teal, 0 8px 20px alpha(#000, 0.28);
 }
 
 .card-box {
-  background: transparent;
+  background: none;
 }
 .cover,
 .card-cover,
 .detail-cover {
+  background-color: alpha(@window_fg_color, 0.05);
+  border: 1px solid alpha(@window_fg_color, 0.08);
   border-radius: 8px;
-  background-color: @quill_surface1;
-}
-window.dark .cover,
-window.dark .card-cover,
-window.dark .detail-cover {
-  background-color: #3a3a3d;
+  /* stripe placeholder colour, read by the Cover drawing */
+  color: alpha(@window_fg_color, 0.12);
 }
 .cover-caption {
-  color: @quill_muted;
   font-family: "IBM Plex Mono", monospace;
-  font-size: 11px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: @quill_text_soft;
+  background-color: alpha(@window_bg_color, 0.8);
+  border-radius: 4px;
+  padding: 3px 8px;
 }
 
 .card-title {
-  color: @quill_text;
-  font-size: 13px;
-  font-weight: 500;
+  font-family: "IBM Plex Sans", sans-serif;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: @window_fg_color;
   margin-top: 2px;
 }
-window.dark .card-title {
-  color: #ffffff;
-}
 .card-subtitle {
-  color: @quill_teal1;
   font-family: "IBM Plex Mono", monospace;
   font-size: 11px;
+  color: @quill_teal;
 }
-window.dark .card-subtitle {
-  color: #50d9d5;
+
+/* ---------- empty state ---------- */
+
+.empty-cta {
+  background-color: @quill_teal;
+  color: #ffffff;
+}
+.empty-cta:hover {
+  background-color: shade(@quill_teal, 1.08);
 }
 
 /* ---------- info panel ---------- */
 
-.info-panel {
-  background: transparent;
-}
+.info-panel,
 .info-panel scrolledwindow,
 .info-panel viewport {
-  background: transparent;
+  background: none;
 }
 
-/* status segmented control */
-.status-seg {
-  margin-top: 2px;
-}
+/* three-way status segmented control */
 .status-btn {
-  background-color: @quill_surface1;
-  color: @quill_icon_dim;
+  background-color: alpha(@window_fg_color, 0.06);
+  color: alpha(@window_fg_color, 0.6);
   border: none;
   box-shadow: none;
   border-radius: 10px;
@@ -226,15 +231,9 @@ window.dark .card-subtitle {
   min-height: 44px;
   padding: 0 8px;
 }
-window.dark .status-btn {
-  background-color: #2c2c2c;
-  color: #b7b7b7;
-}
 .status-btn:hover {
-  background-color: @quill_surface2;
-}
-window.dark .status-btn:hover {
-  background-color: #3a3a3d;
+  background-color: alpha(@window_fg_color, 0.10);
+  color: @window_fg_color;
 }
 .status-btn label {
   font-family: "IBM Plex Mono", monospace;
@@ -242,142 +241,119 @@ window.dark .status-btn:hover {
   font-weight: 500;
 }
 .status-btn.active {
-  background-color: @quill_surface2;
-  color: @quill_text;
-}
-window.dark .status-btn.active {
-  background-color: #4c4c4f;
-  color: #ffffff;
+  background-color: alpha(@window_fg_color, 0.13);
+  color: @window_fg_color;
 }
 
 /* details list */
-.details {
-  padding-right: 2px;
-}
 .detail-key {
-  color: @quill_teal1;
   font-family: "IBM Plex Mono", monospace;
   font-size: 12px;
-}
-window.dark .detail-key {
-  color: #50d9d5;
+  color: @quill_teal;
 }
 .detail-val {
-  color: @quill_muted;
   font-family: "IBM Plex Mono", monospace;
   font-size: 12px;
-}
-window.dark .detail-val {
-  color: #8f8f8f;
+  color: @quill_text_soft;
 }
 .detail-sep {
-  background-color: @quill_line;
+  background-color: alpha(@window_fg_color, 0.09);
   min-height: 1px;
-}
-window.dark .detail-sep {
-  background-color: alpha(#ffffff, 0.09);
 }
 
 .star-btn {
   min-width: 24px;
   min-height: 24px;
   padding: 1px;
-  background: transparent;
+  background: none;
   box-shadow: none;
 }
 .star-btn.star-filled {
   color: @quill_gold;
 }
-window.dark .star-btn.star-filled {
-  color: #dea555;
-}
 .star-btn.star-empty {
-  color: @quill_muted;
-}
-window.dark .star-btn.star-empty {
-  color: #8f8f8f;
+  color: alpha(@window_fg_color, 0.30);
 }
 .star-btn:hover {
-  background: transparent;
+  background: none;
 }
 
 .notes {
-  background-color: @quill_surface1;
-  color: @quill_text;
+  background-color: alpha(@window_fg_color, 0.05);
+  color: @window_fg_color;
   border-radius: 8px;
-  font-size: 12px;
+  font-family: "IBM Plex Sans", sans-serif;
+  font-size: 12.5px;
 }
 .notes text {
-  background: transparent;
-  color: @quill_text;
-}
-window.dark .notes,
-window.dark .notes text {
-  background-color: #2c2c2c;
-  color: #e8e8e8;
+  background: none;
+  color: @window_fg_color;
 }
 
 .remove-link {
-  color: @quill_muted;
-  font-size: 12px;
-  padding: 2px 4px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: @quill_text_soft;
+  padding: 3px 6px;
   min-height: 0;
 }
 .remove-link:hover {
   color: #e05353;
-  background: transparent;
-}
-
-/* ---------- empty state ---------- */
-
-.empty-icon {
-  color: @quill_muted;
-  opacity: 0.55;
-}
-window.dark .empty-icon {
-  color: #8f8f8f;
-}
-.empty-title {
-  font-size: 17px;
-  font-weight: 600;
-  color: @quill_text;
-}
-window.dark .empty-title {
-  color: #ffffff;
-}
-.empty-subtitle {
-  color: @quill_muted;
-  font-family: "IBM Plex Mono", monospace;
-  font-size: 12px;
-}
-window.dark .empty-subtitle {
-  color: #8f8f8f;
-}
-
-.pill {
-  border-radius: 999px;
-  padding: 6px 16px;
+  background: none;
 }
 
 /* ---------- add-book dialog ---------- */
 
 .mono-dim {
-  color: @quill_muted;
   font-family: "IBM Plex Mono", monospace;
   font-size: 12px;
-}
-window.dark .mono-dim {
-  color: #8f8f8f;
-}
-.search-entry {
-  border-radius: 8px;
+  color: @quill_text_soft;
 }
 
-/* ---------- misc accents ---------- */
+/* ==================== dark theme ====================
+   Surfaces and neutral text adapt through the named colors above; only the
+   accents swap so they read on dark surfaces. */
 
-link {
-  color: @quill_teal1;
+window.dark link,
+window.dark .root-bg link {
+  color: @quill_teal_light;
 }
-window.dark link {
-  color: #50d9d5;
+window.dark .cover-scale highlight,
+window.dark .cover-scale slider {
+  background-color: @quill_teal_light;
+}
+window.dark .tab-btn.tab-active {
+  background-color: alpha(#fff, 0.14);
+  box-shadow: 0 1px 3px alpha(#000, 0.3);
+}
+window.dark .search-entry:focus-within {
+  border-color: @quill_teal_light;
+}
+window.dark .paper {
+  box-shadow: 0 1px 2px alpha(#000, 0.2), 0 12px 32px alpha(#000, 0.35);
+}
+window.dark .card-subtitle {
+  color: @quill_teal_light;
+}
+window.dark gridview.card-grid > child:selected .card-cover {
+  box-shadow: 0 0 0 3px @quill_teal_light, 0 8px 20px alpha(#000, 0.45);
+}
+window.dark .empty-cta {
+  background-color: @quill_teal_light;
+  color: #1c1c1c;
+}
+window.dark .empty-cta:hover {
+  background-color: shade(@quill_teal_light, 1.08);
+}
+window.dark .detail-key {
+  color: @quill_teal_light;
+}
+window.dark .detail-val,
+window.dark .mono-dim,
+window.dark .cover-caption {
+  color: @quill_text_soft_dark;
+}
+window.dark .star-btn.star-filled {
+  color: @quill_gold_light;
 }

@@ -1,9 +1,10 @@
 """Quill's main window: a master-detail reading tracker.
 
-The library is a grid of book covers inside a "paper" card; selecting a cover
-reveals an info panel on the right with a segmented status control, a star
-rating, book metadata and an autosaving summary. The visual language (grey
-desktop, teal & gold accents) follows the Dr. von Miau design system.
+Shares Lyre/Easel's chrome — a custom titlebar with the window controls, a
+cover-size slider and the menu; a navigation band of shelf tabs on the grey
+desktop; and a rounded "paper" card that holds the library grid. Selecting a
+cover reveals a floating info panel on the right (cover, a three-way status
+control, a star rating, metadata and an autosaving summary).
 """
 import datetime
 import threading
@@ -31,7 +32,6 @@ STATUS_ICONS = {
     "want": "quill-status-toread-symbolic",
 }
 
-# Sort options for the library grid.
 SORT_OPTIONS = [
     ("Recently added", "recent"),
     ("Title", "title"),
@@ -47,8 +47,9 @@ THEME_SCHEMES = {
 
 POINTER_CURSOR = Gdk.Cursor.new_from_name("pointer")
 
-# Detail-panel cover width (the panel is ~300 px wide).
-DETAIL_COVER_W = 264
+SPACE_L = 24
+INFO_WIDTH = 300          # the floating info panel
+DETAIL_COVER_W = 268      # cover width inside the info panel
 
 
 @Gtk.Template(resource_path="/io/github/drvonmiau/Quill/window.ui")
@@ -56,23 +57,29 @@ class QuillWindow(Adw.ApplicationWindow):
     __gtype_name__ = "QuillWindow"
 
     toast_overlay = Gtk.Template.Child()
-    cover_scale = Gtk.Template.Child()
 
+    titlebar_box = Gtk.Template.Child()
+    titlebar_spacer = Gtk.Template.Child()
+    wc_start = Gtk.Template.Child()
+    cover_scale = Gtk.Template.Child()
+    menu_button = Gtk.Template.Child()
+
+    nav_row = Gtk.Template.Child()
     middle_stack = Gtk.Template.Child()
     tab_read = Gtk.Template.Child()
     tab_reading = Gtk.Template.Child()
     tab_toread = Gtk.Template.Child()
     search_entry = Gtk.Template.Child()
-
     add_btn = Gtk.Template.Child()
     sort_btn = Gtk.Template.Child()
     search_toggle_btn = Gtk.Template.Child()
 
+    content_row = Gtk.Template.Child()
     paper_stack = Gtk.Template.Child()
     book_grid = Gtk.Template.Child()
-    add_first_btn = Gtk.Template.Child()
 
     info_revealer = Gtk.Template.Child()
+    info_panel = Gtk.Template.Child()
     detail_cover_slot = Gtk.Template.Child()
     status_read_btn = Gtk.Template.Child()
     status_reading_btn = Gtk.Template.Child()
@@ -98,6 +105,8 @@ class QuillWindow(Adw.ApplicationWindow):
         self._loading_detail = False
         self._notes_timer = 0
         self._cover_size_timer = 0
+        self._surface_width = 0
+        self._surface_height = 0
         self._sort = self.settings.get_string("sort-books")
         self._cover_w = self.settings.get_int("cover-size")
 
@@ -120,9 +129,8 @@ class QuillWindow(Adw.ApplicationWindow):
         self._setup_cover_slider()
 
         for shelf, btn in self._tab_buttons.items():
-            btn.connect("toggled", self._on_tab_toggled, shelf)
+            btn.connect("clicked", lambda _b, s=shelf: self._select_tab(s))
         self.add_btn.connect("clicked", lambda *_: self._open_add_dialog())
-        self.add_first_btn.connect("clicked", lambda *_: self._open_add_dialog())
         self.search_toggle_btn.connect("toggled", self._on_toggle_search)
         self.search_entry.connect("search-changed", self._on_search_changed)
         self.search_entry.connect("stop-search",
@@ -130,13 +138,16 @@ class QuillWindow(Adw.ApplicationWindow):
         self.detail_remove_btn.connect("clicked", lambda *_: self._confirm_delete())
 
         self.connect("close-request", self._on_close_request)
+        self.connect("realize", self._on_realize)
 
         self._setup_theme()
+        self._setup_titlebar_sides()
         self._restore_state()
         self._build_sort_menu()
+        self._apply_pointer_cursors()
         self._load_books()
 
-    # ---------- actions / chrome ----------
+    # ---------- actions ----------
 
     def _setup_actions(self):
         add = Gio.SimpleAction.new("add-book", None)
@@ -179,17 +190,86 @@ class QuillWindow(Adw.ApplicationWindow):
         self.settings.set_string("sort-books", mode)
         self._apply_filter()
 
-    def _on_toggle_search(self, btn):
-        active = btn.get_active()
-        self.middle_stack.set_visible_child_name("search" if active else "view")
-        if active:
-            self.search_entry.grab_focus()
-        else:
-            self.search_entry.set_text("")
+    # ---------- titlebar / layout ----------
 
-    def _on_search_changed(self, entry):
-        self._search_query = entry.get_text().strip().lower()
-        self._apply_filter()
+    @staticmethod
+    def _close_button_is_left(layout):
+        left = (layout or "").split(":")[0]
+        return "close" in left
+
+    def _setup_titlebar_sides(self):
+        settings = Gtk.Settings.get_default()
+        if settings is not None:
+            settings.connect("notify::gtk-decoration-layout",
+                             lambda *_a: self._apply_titlebar_side())
+        self._apply_titlebar_side()
+
+    def _apply_titlebar_side(self):
+        """Keep the cover-size slider + menu on the OPPOSITE side of the window
+        controls, whichever side the system puts them."""
+        settings = Gtk.Settings.get_default()
+        layout = settings.get_property("gtk-decoration-layout") if settings else ""
+        aux = (self.cover_scale, self.menu_button)
+        box = self.titlebar_box
+        if self._close_button_is_left(layout):
+            box.reorder_child_after(self.titlebar_spacer, self.wc_start)
+            previous = self.titlebar_spacer
+        else:
+            previous = self.wc_start
+        for widget in aux:
+            box.reorder_child_after(widget, previous)
+            previous = widget
+        if not self._close_button_is_left(layout):
+            box.reorder_child_after(self.titlebar_spacer, previous)
+
+    def _apply_pointer_cursors(self):
+        def walk(widget):
+            if isinstance(widget, Gtk.WindowControls):
+                return
+            if isinstance(widget, (Gtk.Button, Gtk.Scale)):
+                widget.set_cursor(POINTER_CURSOR)
+            child = widget.get_first_child()
+            while child:
+                walk(child)
+                child = child.get_next_sibling()
+        walk(self)
+
+    def _on_realize(self, *_args):
+        surface = self.get_surface()
+        if surface is not None:
+            surface.connect("notify::width", self._on_surface_resize)
+            surface.connect("notify::height", self._on_surface_resize)
+            self._on_surface_resize(surface, None)
+
+    def _on_surface_resize(self, surface, _pspec):
+        self._surface_width = surface.get_width()
+        self._surface_height = surface.get_height()
+        self._apply_layout_metrics()
+        return False
+
+    def _apply_layout_metrics(self):
+        """5% top/left/right margins with the paper + info block centered; the
+        info panel is a fixed 300px floating panel to the paper's right."""
+        width, height = self._surface_width, self._surface_height
+        if width <= 0 or height <= 0:
+            return
+        margin_y = round(height * 0.05)
+        margin_x = max(SPACE_L, round(width * 0.05))
+        revealed = self.info_revealer.get_reveal_child()
+        if revealed:
+            gap = round(width * 0.05)
+            ideal_paper = round(width * 0.60)
+            centered = (width - ideal_paper - gap - INFO_WIDTH) // 2
+            margin_x = max(margin_x, centered)
+        else:
+            gap = 0
+        self.content_row.set_margin_start(margin_x)
+        self.content_row.set_margin_end(margin_x)
+        self.content_row.set_margin_top(0)
+        self.content_row.set_margin_bottom(margin_y)
+        self.nav_row.set_margin_start(margin_x)
+        self.nav_row.set_margin_end(margin_x + (gap + INFO_WIDTH if revealed else 0))
+        self.info_revealer.set_margin_start(gap)
 
     # ---------- theme + window state ----------
 
@@ -215,8 +295,7 @@ class QuillWindow(Adw.ApplicationWindow):
         if self.settings.get_boolean("window-maximized"):
             self.maximize()
         saved = self.settings.get_string("last-shelf")
-        self.shelf = saved if saved in SHELVES else "reading"
-        self._tab_buttons[self.shelf].set_active(True)
+        self._select_tab(saved if saved in SHELVES else "reading")
 
     def _on_close_request(self, *_args):
         self._flush_notes()
@@ -249,9 +328,33 @@ class QuillWindow(Adw.ApplicationWindow):
     def _apply_cover_size(self):
         self._cover_size_timer = 0
         self.settings.set_int("cover-size", self._cover_w)
-        # Re-splice with the same items so every tile rebinds at the new size.
-        self._apply_filter()
+        self._apply_filter()  # re-splice so every tile rebinds at the new size
         return False
+
+    # ---------- tabs ----------
+
+    def _select_tab(self, shelf):
+        self.shelf = shelf
+        for key, btn in self._tab_buttons.items():
+            if key == shelf:
+                btn.add_css_class("tab-active")
+            else:
+                btn.remove_css_class("tab-active")
+        self.settings.set_string("last-shelf", shelf)
+        self._close_detail()
+        self._apply_filter()
+
+    def _on_toggle_search(self, btn):
+        active = btn.get_active()
+        self.middle_stack.set_visible_child_name("search" if active else "view")
+        if active:
+            self.search_entry.grab_focus()
+        else:
+            self.search_entry.set_text("")
+
+    def _on_search_changed(self, entry):
+        self._search_query = entry.get_text().strip().lower()
+        self._apply_filter()
 
     # ---------- grid ----------
 
@@ -309,13 +412,16 @@ class QuillWindow(Adw.ApplicationWindow):
     # ---------- loading / filtering ----------
 
     def _load_books(self):
-        self._books_all = [
+        self._books_all = self._read_all()
+        self._apply_filter()
+
+    def _read_all(self):
+        return [
             Book(id=r["id"], title=r["title"], author=r["author"], year=r["year"],
                  pages=r["pages"], cover_path=r["cover_path"], status=r["status"],
                  rating=r["rating"], olid=r["olid"], notes=r["notes"])
             for r in lib.all_books(self.con)
         ]
-        self._apply_filter()
 
     def _sorted(self, books):
         mode = self._sort
@@ -342,7 +448,6 @@ class QuillWindow(Adw.ApplicationWindow):
         self._restore_grid_selection(visible)
 
     def _restore_grid_selection(self, visible):
-        """Keep the open book highlighted after the grid is rebuilt."""
         if self._detail_book_id is None:
             self.selection.set_selected(Gtk.INVALID_LIST_POSITION)
             return
@@ -352,19 +457,15 @@ class QuillWindow(Adw.ApplicationWindow):
                 return
         self.selection.set_selected(Gtk.INVALID_LIST_POSITION)
 
-    def _on_tab_toggled(self, btn, shelf):
-        if not btn.get_active():
-            return
-        self.shelf = shelf
-        self.settings.set_string("last-shelf", shelf)
-        self._close_detail()
+    def _reload_grid(self):
+        """Refresh grid data while keeping the detail panel open."""
+        self._books_all = self._read_all()
         self._apply_filter()
 
     # ---------- detail panel ----------
 
     def _setup_status_control(self):
         for status, btn in self._status_buttons.items():
-            btn.set_cursor(POINTER_CURSOR)
             btn.connect("clicked", self._on_status_clicked, status)
 
     def _setup_stars(self):
@@ -373,7 +474,6 @@ class QuillWindow(Adw.ApplicationWindow):
             btn = Gtk.Button(icon_name="quill-star-empty-symbolic",
                              css_classes=["flat", "star-btn", "star-empty"],
                              valign=Gtk.Align.CENTER)
-            btn.set_cursor(POINTER_CURSOR)
             btn.connect("clicked", lambda _b, n=i + 1: self._on_star_clicked(n))
             self._star_btns.append(btn)
             self.detail_rating_box.append(btn)
@@ -383,7 +483,7 @@ class QuillWindow(Adw.ApplicationWindow):
             filled = i < rating
             btn.set_icon_name("quill-star-filled-symbolic" if filled
                               else "quill-star-empty-symbolic")
-            btn.remove_css_class("star-filled" if not filled else "star-empty")
+            btn.remove_css_class("star-empty" if filled else "star-filled")
             btn.add_css_class("star-filled" if filled else "star-empty")
 
     def _render_status_control(self, current):
@@ -433,6 +533,7 @@ class QuillWindow(Adw.ApplicationWindow):
         self.detail_notes.get_buffer().set_text(row["notes"] or "")
 
         self.info_revealer.set_reveal_child(True)
+        self._apply_layout_metrics()
         self._loading_detail = False
 
     def _close_detail(self):
@@ -440,6 +541,7 @@ class QuillWindow(Adw.ApplicationWindow):
         self._detail_book_id = None
         self.info_revealer.set_reveal_child(False)
         self.selection.set_selected(Gtk.INVALID_LIST_POSITION)
+        self._apply_layout_metrics()
 
     @staticmethod
     def _format_dates(row):
@@ -498,16 +600,6 @@ class QuillWindow(Adw.ApplicationWindow):
             lib.set_notes(self.con, self._detail_book_id, text)
         return False
 
-    def _reload_grid(self):
-        """Refresh the grid data while keeping the detail panel open."""
-        self._books_all = [
-            Book(id=r["id"], title=r["title"], author=r["author"], year=r["year"],
-                 pages=r["pages"], cover_path=r["cover_path"], status=r["status"],
-                 rating=r["rating"], olid=r["olid"], notes=r["notes"])
-            for r in lib.all_books(self.con)
-        ]
-        self._apply_filter()
-
     def _confirm_delete(self):
         if self._detail_book_id is None:
             return
@@ -545,8 +637,7 @@ class QuillWindow(Adw.ApplicationWindow):
         entry = Gtk.SearchEntry(placeholder_text="Search by title or author")
         entry.add_css_class("search-entry")
 
-        shelf_dd = Gtk.DropDown.new_from_strings(
-            [SHELF_LABELS[s] for s in SHELVES])
+        shelf_dd = Gtk.DropDown.new_from_strings([SHELF_LABELS[s] for s in SHELVES])
         shelf_dd.set_selected(SHELVES.index("want"))
         shelf_row = Gtk.Box(spacing=8)
         shelf_row.append(Gtk.Label(label="Add to", css_classes=["mono-dim"]))
@@ -582,7 +673,7 @@ class QuillWindow(Adw.ApplicationWindow):
                 try:
                     results = ol.search(query)
                     err = None
-                except Exception as exc:  # network / parse failure
+                except Exception as exc:
                     results, err = [], str(exc)
                 GLib.idle_add(deliver, token, results, err)
 
@@ -591,7 +682,7 @@ class QuillWindow(Adw.ApplicationWindow):
 
         def deliver(token, results, err):
             if token != state["token"]:
-                return False  # a newer search superseded this one
+                return False
             state["results"] = results
             self._clear_listbox(listbox)
             if err:
