@@ -14,11 +14,12 @@ import time
 
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
 
+from . import analytics
 from . import csvimport
 from . import library as lib
 from . import openlibrary as ol
 from .models import Book
-from .widgets import Cover
+from .widgets import BarChart, Cover
 
 APP_ID = "io.github.drvonmiau.Quill"
 
@@ -82,6 +83,7 @@ class QuillWindow(Adw.ApplicationWindow):
     tab_reading = Gtk.Template.Child()
     tab_toread = Gtk.Template.Child()
     tab_abandoned = Gtk.Template.Child()
+    tab_stats = Gtk.Template.Child()
     search_entry = Gtk.Template.Child()
     add_btn = Gtk.Template.Child()
     sort_btn = Gtk.Template.Child()
@@ -90,6 +92,7 @@ class QuillWindow(Adw.ApplicationWindow):
     content_row = Gtk.Template.Child()
     paper_stack = Gtk.Template.Child()
     book_grid = Gtk.Template.Child()
+    stats_content = Gtk.Template.Child()
 
     info_revealer = Gtk.Template.Child()
     info_panel = Gtk.Template.Child()
@@ -129,6 +132,7 @@ class QuillWindow(Adw.ApplicationWindow):
             "reading": self.tab_reading,
             "want": self.tab_toread,
             "abandoned": self.tab_abandoned,
+            "stats": self.tab_stats,
         }
         self._status_buttons = {
             "read": self.status_read_btn,
@@ -444,6 +448,8 @@ class QuillWindow(Adw.ApplicationWindow):
         return books  # "recent" — library order is already newest-first
 
     def _apply_filter(self):
+        if self.shelf == "stats":
+            return  # the Stats view owns the paper stack while it's active
         q = self._search_query
         visible = []
         for b in self._sorted(self._books_all):
@@ -490,8 +496,11 @@ class QuillWindow(Adw.ApplicationWindow):
                 btn.add_css_class("tab-active")
             else:
                 btn.remove_css_class("tab-active")
-        self.settings.set_string("last-shelf", shelf)
         self._close_detail()
+        if shelf == "stats":
+            self._show_stats()
+            return
+        self.settings.set_string("last-shelf", shelf)
         self._apply_filter()
 
     def _on_toggle_search(self, btn):
@@ -505,6 +514,92 @@ class QuillWindow(Adw.ApplicationWindow):
     def _on_search_changed(self, entry):
         self._search_query = entry.get_text().strip().lower()
         self._apply_filter()
+
+    # ---------- stats ----------
+
+    def _accent_rgba(self):
+        rgba = Gdk.RGBA()
+        rgba.parse("#50d9d5" if Adw.StyleManager.get_default().get_dark() else "#15aaa8")
+        return rgba
+
+    @staticmethod
+    def _clear_box(box):
+        child = box.get_first_child()
+        while child:
+            nxt = child.get_next_sibling()
+            box.remove(child)
+            child = nxt
+
+    @staticmethod
+    def _pages_short(value):
+        return f"{value / 1000:.1f}k" if value >= 1000 else str(value)
+
+    @staticmethod
+    def _month_label(ym):
+        try:
+            return datetime.datetime.strptime(ym, "%Y-%m").strftime("%b")
+        except ValueError:
+            return ym
+
+    def _stat_tile(self, value, caption):
+        tile = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        tile.add_css_class("stat-tile")
+        tile.append(Gtk.Label(label=value, xalign=0, css_classes=["stat-value"]))
+        tile.append(Gtk.Label(label=caption, xalign=0, css_classes=["stat-caption"]))
+        return tile
+
+    def _stat_section(self, title, chart):
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        box.append(Gtk.Label(label=title, xalign=0, css_classes=["section-title"]))
+        box.append(chart)
+        return box
+
+    def _show_stats(self):
+        self._clear_box(self.stats_content)
+        self.paper_stack.set_visible_child_name("stats")
+        data = analytics.compute(self.con)
+        t = data["totals"]
+
+        if t["library"] == 0:
+            self.stats_content.append(Gtk.Label(
+                label="No books yet — add or import some to see your stats.",
+                css_classes=["mono-dim"], xalign=0))
+            return
+
+        tiles = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,
+                            max_children_per_line=4, min_children_per_line=2,
+                            column_spacing=12, row_spacing=12, homogeneous=True)
+        tiles.add_css_class("stat-tiles")
+        tiles.append(self._stat_tile(str(t["read"]), "Books read"))
+        tiles.append(self._stat_tile(f'{t["pages_read"]:,}', "Pages read"))
+        tiles.append(self._stat_tile(
+            f'{t["avg_rating"]:.1f}★' if t["avg_rating"] else "—", "Average rating"))
+        tiles.append(self._stat_tile(
+            str(t["avg_pages"]) if t["avg_pages"] else "—", "Average length"))
+        self.stats_content.append(tiles)
+
+        accent = self._accent_rgba()
+        per_year = data["per_year"]
+        if per_year:
+            self.stats_content.append(self._stat_section(
+                "Books finished per year",
+                BarChart([(str(y), n) for y, n, _p in per_year], accent)))
+            self.stats_content.append(self._stat_section(
+                "Pages read per year",
+                BarChart([(str(y), p) for y, _n, p in per_year], accent,
+                         value_fmt=self._pages_short)))
+
+        per_month = data["per_month"]
+        if any(n for _ym, n, _p in per_month):
+            self.stats_content.append(self._stat_section(
+                "Books finished per month (last 12)",
+                BarChart([(self._month_label(ym), n) for ym, n, _p in per_month], accent)))
+
+        dist = data["rating_dist"]
+        if any(n for _s, n in dist):
+            self.stats_content.append(self._stat_section(
+                "Rating distribution",
+                BarChart([(f"{s}★", n) for s, n in dist], accent)))
 
     # ---------- detail panel ----------
 
