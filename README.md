@@ -9,7 +9,7 @@ runtime. It shares its visual language (grey desktop + paper card + segmented
 pill tabs, teal/gold accents) with its sibling app **Lyre**.
 
 ## Features
-- **Read / Reading / To read** shelves as segmented tabs.
+- **Read / Reading / To read / Abandoned** shelves as segmented tabs.
 - **Master–detail** layout: a paper card of cover tiles with an info panel that
   slides in when you select a book (cover, status, rating, dates, summary).
 - A three-way **status control** to move a book between shelves in place.

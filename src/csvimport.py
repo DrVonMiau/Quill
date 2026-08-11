@@ -17,9 +17,7 @@ Notable field encodings:
 """
 import csv
 
-# Openreads status -> Quill shelf. Quill has no "abandoned" shelf, so an
-# abandoned book lands on Read (it's off the to-read pile) and is tagged in
-# its summary during import.
+# Openreads status -> Quill shelf.
 _STATUS_MAP = {
     "finished": "read",
     "read": "read",
@@ -27,7 +25,7 @@ _STATUS_MAP = {
     "reading": "reading",
     "planned": "want",
     "want": "want",
-    "abandoned": "read",
+    "abandoned": "abandoned",
 }
 
 
@@ -97,8 +95,6 @@ def parse_openreads(fileobj):
         started, finished = _parse_readings(row.get("readings"))
 
         notes = (row.get("notes") or "").strip() or (row.get("my_review") or "").strip()
-        if (row.get("status") or "").strip().lower() == "abandoned":
-            notes = ("[Abandoned] " + notes).strip()
 
         olid = (row.get("olid") or "").strip().split(",")[0].strip()
         isbn = (row.get("isbn") or "").strip().split(",")[0].strip()

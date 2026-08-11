@@ -14,12 +14,13 @@ CACHE_DIR = Path(GLib.get_user_cache_dir()) / "quill"
 COVERS_DIR = CACHE_DIR / "covers"
 DB_PATH = DATA_DIR / "library.db"
 
-# The three shelves a book can sit on.
-STATUSES = ("want", "reading", "read")
+# The shelves a book can sit on.
+STATUSES = ("want", "reading", "read", "abandoned")
 STATUS_LABELS = {
     "want": "Want to read",
     "reading": "Reading",
     "read": "Read",
+    "abandoned": "Abandoned",
 }
 
 _SCHEMA = """
@@ -36,12 +37,18 @@ CREATE TABLE IF NOT EXISTS books (
     status        TEXT NOT NULL DEFAULT 'want',
     rating        INTEGER NOT NULL DEFAULT 0,
     notes         TEXT DEFAULT '',
+    description   TEXT DEFAULT '',
     date_added    TEXT DEFAULT (datetime('now')),
     date_started  TEXT,
     date_finished TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_books_status ON books(status);
 """
+
+# Columns added after v0.1.0; applied to pre-existing databases on connect.
+_MIGRATIONS = (
+    ("description", "TEXT DEFAULT ''"),
+)
 
 
 def connect():
@@ -52,8 +59,16 @@ def connect():
     con.execute("PRAGMA journal_mode=WAL")
     con.execute("PRAGMA foreign_keys=ON")
     con.executescript(_SCHEMA)
+    _migrate(con)
     con.commit()
     return con
+
+
+def _migrate(con):
+    have = {r["name"] for r in con.execute("PRAGMA table_info(books)").fetchall()}
+    for name, decl in _MIGRATIONS:
+        if name not in have:
+            con.execute(f"ALTER TABLE books ADD COLUMN {name} {decl}")
 
 
 # ---------- reads ----------
@@ -151,6 +166,11 @@ def set_rating(con, book_id, rating):
 
 def set_notes(con, book_id, notes):
     con.execute("UPDATE books SET notes=? WHERE id=?", (notes, book_id))
+    con.commit()
+
+
+def set_description(con, book_id, description):
+    con.execute("UPDATE books SET description=? WHERE id=?", (description, book_id))
     con.commit()
 
 

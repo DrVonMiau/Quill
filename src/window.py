@@ -3,10 +3,12 @@
 Shares Lyre/Easel's chrome — a custom titlebar with the window controls, a
 cover-size slider and the menu; a navigation band of shelf tabs on the grey
 desktop; and a rounded "paper" card that holds the library grid. Selecting a
-cover reveals a floating info panel on the right (cover, a three-way status
-control, a star rating, metadata and an autosaving summary).
+cover reveals a floating 300px info panel (cover, a three-way status control, a
+star rating, metadata and an Open Library summary).
 """
 import datetime
+import os
+import shutil
 import threading
 import time
 
@@ -22,12 +24,16 @@ APP_ID = "io.github.drvonmiau.Quill"
 
 # Shelves shown as tabs, in the order the design lays them out. Each maps to a
 # stored book status.
-SHELVES = ("read", "reading", "want")
+SHELVES = ("read", "reading", "want", "abandoned")
 SHELF_LABELS = {
     "read": "Read",
     "reading": "Reading",
     "want": "To read",
+    "abandoned": "Abandoned",
 }
+# The three-way status control in the detail panel (Abandoned is set via its own
+# button, not this control).
+STATUS_CONTROL = ("read", "reading", "want")
 STATUS_ICONS = {
     "read": "quill-status-read-symbolic",
     "reading": "quill-status-reading-symbolic",
@@ -35,11 +41,15 @@ STATUS_ICONS = {
 }
 
 SORT_OPTIONS = [
+    ("Finished date", "finished"),
     ("Recently added", "recent"),
     ("Title", "title"),
     ("Author", "author"),
     ("Rating", "rating"),
 ]
+
+# Four discrete cover-tile widths for the header slider (portrait 1.5 ratio).
+COVER_SIZES = [128, 156, 188, 220]
 
 THEME_SCHEMES = {
     "light": Adw.ColorScheme.FORCE_LIGHT,
@@ -71,6 +81,7 @@ class QuillWindow(Adw.ApplicationWindow):
     tab_read = Gtk.Template.Child()
     tab_reading = Gtk.Template.Child()
     tab_toread = Gtk.Template.Child()
+    tab_abandoned = Gtk.Template.Child()
     search_entry = Gtk.Template.Child()
     add_btn = Gtk.Template.Child()
     sort_btn = Gtk.Template.Child()
@@ -91,7 +102,8 @@ class QuillWindow(Adw.ApplicationWindow):
     detail_date = Gtk.Template.Child()
     detail_pages = Gtk.Template.Child()
     detail_rating_box = Gtk.Template.Child()
-    detail_notes = Gtk.Template.Child()
+    detail_summary = Gtk.Template.Child()
+    detail_abandon_btn = Gtk.Template.Child()
     detail_remove_btn = Gtk.Template.Child()
 
     def __init__(self, **kwargs):
@@ -105,7 +117,6 @@ class QuillWindow(Adw.ApplicationWindow):
         self._detail_book_id = None
         self._detail_cover = None
         self._loading_detail = False
-        self._notes_timer = 0
         self._cover_size_timer = 0
         self._grid_refresh_timer = 0
         self._surface_width = 0
@@ -117,6 +128,7 @@ class QuillWindow(Adw.ApplicationWindow):
             "read": self.tab_read,
             "reading": self.tab_reading,
             "want": self.tab_toread,
+            "abandoned": self.tab_abandoned,
         }
         self._status_buttons = {
             "read": self.status_read_btn,
@@ -128,7 +140,6 @@ class QuillWindow(Adw.ApplicationWindow):
         self._setup_grid()
         self._setup_stars()
         self._setup_status_control()
-        self._setup_notes()
         self._setup_cover_slider()
 
         for shelf, btn in self._tab_buttons.items():
@@ -138,6 +149,7 @@ class QuillWindow(Adw.ApplicationWindow):
         self.search_entry.connect("search-changed", self._on_search_changed)
         self.search_entry.connect("stop-search",
                                   lambda *_: self.search_toggle_btn.set_active(False))
+        self.detail_abandon_btn.connect("clicked", lambda *_: self._on_abandon())
         self.detail_remove_btn.connect("clicked", lambda *_: self._confirm_delete())
 
         self.connect("close-request", self._on_close_request)
@@ -276,8 +288,6 @@ class QuillWindow(Adw.ApplicationWindow):
         self.content_row.set_margin_bottom(margin_y)
         self.nav_row.set_margin_start(margin_x)
         self.nav_row.set_margin_end(margin_x + (gap + INFO_WIDTH if revealed else 0))
-        # Pin the panel to a fixed width so it never competes with the paper
-        # for slack (the paper alone absorbs it).
         self.info_panel.set_size_request(INFO_WIDTH if revealed else 0, -1)
         self.info_revealer.set_margin_start(gap)
 
@@ -308,7 +318,6 @@ class QuillWindow(Adw.ApplicationWindow):
         self._select_tab(saved if saved in SHELVES else "reading")
 
     def _on_close_request(self, *_args):
-        self._flush_notes()
         self.settings.set_boolean("window-maximized", self.is_maximized())
         if not self.is_maximized():
             width, height = self.get_default_size()
@@ -324,47 +333,27 @@ class QuillWindow(Adw.ApplicationWindow):
     # ---------- cover-size slider ----------
 
     def _setup_cover_slider(self):
-        adj = self.cover_scale.get_adjustment()
-        self._cover_w = max(int(adj.get_lower()), min(int(adj.get_upper()), self._cover_w))
-        adj.set_value(self._cover_w)
+        idx = min(range(len(COVER_SIZES)),
+                  key=lambda i: abs(COVER_SIZES[i] - self._cover_w))
+        self._cover_w = COVER_SIZES[idx]
+        self.cover_scale.get_adjustment().set_value(idx)
         self.cover_scale.connect("value-changed", self._on_cover_size_changed)
 
     def _on_cover_size_changed(self, scale):
-        self._cover_w = int(scale.get_value())
+        idx = max(0, min(len(COVER_SIZES) - 1, int(round(scale.get_value()))))
+        new_w = COVER_SIZES[idx]
+        if new_w == self._cover_w:
+            return
+        self._cover_w = new_w
+        self.settings.set_int("cover-size", new_w)
         if self._cover_size_timer:
             GLib.source_remove(self._cover_size_timer)
-        self._cover_size_timer = GLib.timeout_add(90, self._apply_cover_size)
+        self._cover_size_timer = GLib.timeout_add(60, self._apply_cover_size)
 
     def _apply_cover_size(self):
         self._cover_size_timer = 0
-        self.settings.set_int("cover-size", self._cover_w)
-        self._apply_filter()  # re-splice so every tile rebinds at the new size
+        self._reload_grid()  # fresh Book objects force every tile to rebind
         return False
-
-    # ---------- tabs ----------
-
-    def _select_tab(self, shelf):
-        self.shelf = shelf
-        for key, btn in self._tab_buttons.items():
-            if key == shelf:
-                btn.add_css_class("tab-active")
-            else:
-                btn.remove_css_class("tab-active")
-        self.settings.set_string("last-shelf", shelf)
-        self._close_detail()
-        self._apply_filter()
-
-    def _on_toggle_search(self, btn):
-        active = btn.get_active()
-        self.middle_stack.set_visible_child_name("search" if active else "view")
-        if active:
-            self.search_entry.grab_focus()
-        else:
-            self.search_entry.set_text("")
-
-    def _on_search_changed(self, entry):
-        self._search_query = entry.get_text().strip().lower()
-        self._apply_filter()
 
     # ---------- grid ----------
 
@@ -389,7 +378,7 @@ class QuillWindow(Adw.ApplicationWindow):
             self._open_book(item.id)
 
     def _card_widget(self):
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8,
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6,
                       margin_top=6, margin_bottom=6, margin_start=6, margin_end=6)
         box.add_css_class("card-box")
         box.set_cursor(POINTER_CURSOR)
@@ -397,10 +386,10 @@ class QuillWindow(Adw.ApplicationWindow):
         cover.add_css_class("card-cover")
         cover.set_halign(Gtk.Align.CENTER)
         title = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END, wrap=True, lines=2,
-                          max_width_chars=16, css_classes=["card-title"])
+                          css_classes=["card-title"])
         title.set_valign(Gtk.Align.START)
         author = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END,
-                           max_width_chars=18, css_classes=["card-subtitle"])
+                           css_classes=["card-subtitle"])
         box.append(cover)
         box.append(title)
         box.append(author)
@@ -413,7 +402,13 @@ class QuillWindow(Adw.ApplicationWindow):
         if not hasattr(box, "cover"):
             box = self._card_widget()
             item.set_child(box)
-        box.cover.set_size(self._cover_w)
+        # Card width tracks the cover so the title/author never exceed it.
+        w = self._cover_w
+        chars = max(9, w // 8)
+        box.set_size_request(w + 12, -1)
+        box.cover.set_size(w)
+        box.title.set_max_width_chars(chars)
+        box.author.set_max_width_chars(chars)
         box.cover.set_placeholder(book.title[:18] if not book.cover_path else "")
         box.cover.set_path(book.cover_path or None)
         box.title.set_label(book.title)
@@ -429,7 +424,9 @@ class QuillWindow(Adw.ApplicationWindow):
         return [
             Book(id=r["id"], title=r["title"], author=r["author"], year=r["year"],
                  pages=r["pages"], cover_path=r["cover_path"], status=r["status"],
-                 rating=r["rating"], olid=r["olid"], notes=r["notes"])
+                 rating=r["rating"], olid=r["olid"], isbn=r["isbn"], notes=r["notes"],
+                 description=r["description"], date_started=r["date_started"],
+                 date_finished=r["date_finished"])
             for r in lib.all_books(self.con)
         ]
 
@@ -441,6 +438,9 @@ class QuillWindow(Adw.ApplicationWindow):
             return sorted(books, key=lambda b: (b.author.lower(), b.title.lower()))
         if mode == "rating":
             return sorted(books, key=lambda b: (-b.rating, b.title.lower()))
+        if mode == "finished":
+            # Most recently finished first; books without a finish date last.
+            return sorted(books, key=lambda b: (b.date_finished or ""), reverse=True)
         return books  # "recent" — library order is already newest-first
 
     def _apply_filter(self):
@@ -470,6 +470,40 @@ class QuillWindow(Adw.ApplicationWindow):
     def _reload_grid(self):
         """Refresh grid data while keeping the detail panel open."""
         self._books_all = self._read_all()
+        self._apply_filter()
+
+    def _schedule_grid_refresh(self):
+        """Coalesce grid rebuilds when many covers land at once (bulk import)."""
+        if self._grid_refresh_timer:
+            return
+        self._grid_refresh_timer = GLib.timeout_add(400, self._do_grid_refresh)
+
+    def _do_grid_refresh(self):
+        self._grid_refresh_timer = 0
+        self._reload_grid()
+        return False
+
+    def _select_tab(self, shelf):
+        self.shelf = shelf
+        for key, btn in self._tab_buttons.items():
+            if key == shelf:
+                btn.add_css_class("tab-active")
+            else:
+                btn.remove_css_class("tab-active")
+        self.settings.set_string("last-shelf", shelf)
+        self._close_detail()
+        self._apply_filter()
+
+    def _on_toggle_search(self, btn):
+        active = btn.get_active()
+        self.middle_stack.set_visible_child_name("search" if active else "view")
+        if active:
+            self.search_entry.grab_focus()
+        else:
+            self.search_entry.set_text("")
+
+    def _on_search_changed(self, entry):
+        self._search_query = entry.get_text().strip().lower()
         self._apply_filter()
 
     # ---------- detail panel ----------
@@ -510,15 +544,10 @@ class QuillWindow(Adw.ApplicationWindow):
                 btn.set_hexpand(False)
             btn.set_child(box)
 
-    def _setup_notes(self):
-        self.detail_notes.get_buffer().connect("changed", self._on_notes_changed)
-
     def _open_book(self, book_id):
         row = lib.get_book(self.con, book_id)
         if not row:
             return
-        if self._detail_book_id is not None and self._detail_book_id != book_id:
-            self._flush_notes()
         self._loading_detail = True
         self._detail_book_id = book_id
 
@@ -531,6 +560,11 @@ class QuillWindow(Adw.ApplicationWindow):
                                    width=DETAIL_COVER_W)
         self._detail_cover.add_css_class("detail-cover")
         self._detail_cover.set_path(row["cover_path"] or None)
+        self._detail_cover.set_cursor(POINTER_CURSOR)
+        self._detail_cover.set_tooltip_text("Click to change the cover")
+        click = Gtk.GestureClick()
+        click.connect("released", lambda *_a: self._open_cover_picker(book_id))
+        self._detail_cover.add_controller(click)
         self.detail_cover_slot.append(self._detail_cover)
 
         self.detail_title.set_label(row["title"])
@@ -540,14 +574,13 @@ class QuillWindow(Adw.ApplicationWindow):
 
         self._render_status_control(row["status"])
         self._render_stars(row["rating"])
-        self.detail_notes.get_buffer().set_text(row["notes"] or "")
+        self._show_summary(row)
 
         self.info_revealer.set_reveal_child(True)
         self._apply_layout_metrics()
         self._loading_detail = False
 
     def _close_detail(self):
-        self._flush_notes()
         self._detail_book_id = None
         self.info_revealer.set_reveal_child(False)
         self.selection.set_selected(Gtk.INVALID_LIST_POSITION)
@@ -575,6 +608,70 @@ class QuillWindow(Adw.ApplicationWindow):
             return None
         return f"{d.day} {d.strftime('%b')} {d.year}"
 
+    # ---------- summary (from Open Library) ----------
+
+    def _show_summary(self, row):
+        desc = (row["description"] or "").strip()
+        if desc:
+            self.detail_summary.set_label(desc)
+            return
+        if row["olid"] or row["isbn"]:
+            self.detail_summary.set_label("Loading summary…")
+            self._fetch_summary_async(row["id"], row["olid"], row["isbn"])
+        else:
+            self.detail_summary.set_label("No summary available.")
+
+    def _fetch_summary_async(self, book_id, olid, isbn):
+        def work():
+            desc = ol.fetch_description(olid=olid or "", isbn=isbn or "")
+            GLib.idle_add(self._summary_ready, book_id, desc)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _summary_ready(self, book_id, desc):
+        if desc:
+            lib.set_description(self.con, book_id, desc)
+        if self._detail_book_id == book_id:
+            self.detail_summary.set_label(desc if desc else "No summary available.")
+        return False
+
+    # ---------- change cover ----------
+
+    def _open_cover_picker(self, book_id):
+        dialog = Gtk.FileDialog(title="Choose a Cover Image")
+        img_filter = Gtk.FileFilter()
+        img_filter.set_name("Images")
+        img_filter.add_pixbuf_formats()
+        filters = Gio.ListStore.new(Gtk.FileFilter)
+        filters.append(img_filter)
+        dialog.set_filters(filters)
+        dialog.set_default_filter(img_filter)
+        dialog.open(self, None, lambda dlg, res: self._on_cover_chosen(dlg, res, book_id))
+
+    def _on_cover_chosen(self, dialog, result, book_id):
+        try:
+            gfile = dialog.open_finish(result)
+        except GLib.Error:
+            return
+        src = gfile.get_path() if gfile is not None else None
+        if not src:
+            return
+        ext = os.path.splitext(src)[1].lower() or ".img"
+        dest = lib.COVERS_DIR / f"{book_id}{ext}"
+        try:
+            shutil.copyfile(src, dest)
+        except OSError:
+            self._toast("Couldn't set that image as the cover.")
+            return
+        lib.set_cover(self.con, book_id, str(dest))
+        self._reload_grid()
+        if self._detail_book_id == book_id and self._detail_cover is not None:
+            self._detail_cover.set_placeholder("")
+            self._detail_cover.set_path(str(dest))
+        self._toast("Cover updated")
+
+    # ---------- status / rating / abandon ----------
+
     def _on_status_clicked(self, _btn, status):
         if self._detail_book_id is None:
             return
@@ -595,20 +692,13 @@ class QuillWindow(Adw.ApplicationWindow):
         self._render_stars(rating)
         self._reload_grid()
 
-    def _on_notes_changed(self, _buffer):
-        if self._loading_detail:
+    def _on_abandon(self):
+        if self._detail_book_id is None:
             return
-        if self._notes_timer:
-            GLib.source_remove(self._notes_timer)
-        self._notes_timer = GLib.timeout_add(600, self._flush_notes)
-
-    def _flush_notes(self):
-        self._notes_timer = 0
-        if self._detail_book_id is not None:
-            buf = self.detail_notes.get_buffer()
-            text = buf.get_text(buf.get_start_iter(), buf.get_end_iter(), True)
-            lib.set_notes(self.con, self._detail_book_id, text)
-        return False
+        lib.set_status(self.con, self._detail_book_id, "abandoned")
+        self._render_status_control("abandoned")
+        self._reload_grid()
+        self._toast("Marked as abandoned")
 
     def _confirm_delete(self):
         if self._detail_book_id is None:
@@ -647,8 +737,8 @@ class QuillWindow(Adw.ApplicationWindow):
         entry = Gtk.SearchEntry(placeholder_text="Search by title or author")
         entry.add_css_class("search-entry")
 
-        shelf_dd = Gtk.DropDown.new_from_strings([SHELF_LABELS[s] for s in SHELVES])
-        shelf_dd.set_selected(SHELVES.index("want"))
+        shelf_dd = Gtk.DropDown.new_from_strings([SHELF_LABELS[s] for s in STATUS_CONTROL])
+        shelf_dd.set_selected(STATUS_CONTROL.index("want"))
         shelf_row = Gtk.Box(spacing=8)
         shelf_row.append(Gtk.Label(label="Add to", css_classes=["mono-dim"]))
         shelf_row.append(shelf_dd)
@@ -739,7 +829,7 @@ class QuillWindow(Adw.ApplicationWindow):
 
     def _add_result(self, res, shelf_dd, dialog):
         idx = shelf_dd.get_selected()
-        status = SHELVES[idx] if 0 <= idx < len(SHELVES) else "want"
+        status = STATUS_CONTROL[idx] if 0 <= idx < len(STATUS_CONTROL) else "want"
         book_id = lib.add_book(
             self.con, title=res["title"], author=res["author"], year=res["year"],
             pages=res["pages"], olid=res["olid"], isbn=res.get("isbn", ""),
@@ -750,6 +840,8 @@ class QuillWindow(Adw.ApplicationWindow):
         cover_i = res.get("cover_i")
         if cover_i:
             self._fetch_cover_async(book_id, cover_i)
+        if res["olid"] or res.get("isbn"):
+            self._fetch_summary_async(book_id, res["olid"], res.get("isbn", ""))
 
     def _fetch_cover_async(self, book_id, cover_i):
         dest = lib.COVERS_DIR / f"{book_id}.jpg"
@@ -772,16 +864,13 @@ class QuillWindow(Adw.ApplicationWindow):
             self._detail_cover.set_path(path)
         return False
 
-    def _schedule_grid_refresh(self):
-        """Coalesce grid rebuilds when many covers land at once (bulk import)."""
-        if self._grid_refresh_timer:
-            return
-        self._grid_refresh_timer = GLib.timeout_add(400, self._do_grid_refresh)
-
-    def _do_grid_refresh(self):
-        self._grid_refresh_timer = 0
-        self._reload_grid()
-        return False
+    @staticmethod
+    def _clear_listbox(listbox):
+        child = listbox.get_first_child()
+        while child:
+            nxt = child.get_next_sibling()
+            listbox.remove(child)
+            child = nxt
 
     # ---------- import from CSV ----------
 
@@ -846,14 +935,6 @@ class QuillWindow(Adw.ApplicationWindow):
                 time.sleep(0.2)
 
         threading.Thread(target=work, daemon=True).start()
-
-    @staticmethod
-    def _clear_listbox(listbox):
-        child = listbox.get_first_child()
-        while child:
-            nxt = child.get_next_sibling()
-            listbox.remove(child)
-            child = nxt
 
     # ---------- preferences ----------
 

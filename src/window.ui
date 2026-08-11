@@ -65,16 +65,17 @@
                       <object class="GtkScale" id="cover_scale">
                         <property name="orientation">horizontal</property>
                         <property name="draw-value">false</property>
-                        <property name="width-request">120</property>
+                        <property name="width-request">110</property>
                         <property name="valign">center</property>
+                        <property name="round-digits">0</property>
                         <property name="tooltip-text" translatable="yes">Cover size</property>
                         <property name="adjustment">
                           <object class="GtkAdjustment">
-                            <property name="lower">110</property>
-                            <property name="upper">200</property>
-                            <property name="value">140</property>
-                            <property name="step-increment">2</property>
-                            <property name="page-increment">20</property>
+                            <property name="lower">0</property>
+                            <property name="upper">3</property>
+                            <property name="value">1</property>
+                            <property name="step-increment">1</property>
+                            <property name="page-increment">1</property>
                           </object>
                         </property>
                         <style>
@@ -167,6 +168,24 @@
                                     </style>
                                   </object>
                                 </child>
+                                <child>
+                                  <object class="GtkLabel">
+                                    <property name="label">|</property>
+                                    <property name="valign">center</property>
+                                    <style>
+                                      <class name="tab-sep"/>
+                                    </style>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkButton" id="tab_abandoned">
+                                    <property name="label" translatable="yes">Abandoned</property>
+                                    <style>
+                                      <class name="flat"/>
+                                      <class name="tab-btn"/>
+                                    </style>
+                                  </object>
+                                </child>
                               </object>
                             </child>
                           </object>
@@ -204,7 +223,7 @@
                 </child>
                 <child>
                   <object class="GtkMenuButton" id="sort_btn">
-                    <property name="icon-name">view-sort-descending-symbolic</property>
+                    <property name="icon-name">quill-sort-symbolic</property>
                     <property name="tooltip-text" translatable="yes">Sort</property>
                     <property name="valign">center</property>
                     <style>
@@ -505,27 +524,41 @@
                                 </child>
 
                                 <child>
-                                  <object class="GtkTextView" id="detail_notes">
+                                  <object class="GtkLabel" id="detail_summary">
+                                    <property name="xalign">0</property>
+                                    <property name="yalign">0</property>
+                                    <property name="wrap">true</property>
                                     <property name="wrap-mode">word-char</property>
-                                    <property name="accepts-tab">false</property>
-                                    <property name="top-margin">8</property>
-                                    <property name="bottom-margin">8</property>
-                                    <property name="left-margin">10</property>
-                                    <property name="right-margin">10</property>
-                                    <property name="height-request">96</property>
-                                    <style><class name="notes"/></style>
+                                    <property name="selectable">true</property>
+                                    <style><class name="summary"/></style>
                                   </object>
                                 </child>
 
                                 <child>
-                                  <object class="GtkButton" id="detail_remove_btn">
-                                    <property name="label" translatable="yes">Remove from library</property>
-                                    <property name="halign">start</property>
-                                    <property name="margin-top">2</property>
-                                    <style>
-                                      <class name="flat"/>
-                                      <class name="remove-link"/>
-                                    </style>
+                                  <object class="GtkBox">
+                                    <property name="orientation">horizontal</property>
+                                    <property name="spacing">8</property>
+                                    <property name="margin-top">8</property>
+                                    <child>
+                                      <object class="GtkButton" id="detail_abandon_btn">
+                                        <property name="label" translatable="yes">Abandon</property>
+                                        <property name="halign">start</property>
+                                        <style>
+                                          <class name="flat"/>
+                                          <class name="remove-link"/>
+                                        </style>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="GtkButton" id="detail_remove_btn">
+                                        <property name="label" translatable="yes">Remove from library</property>
+                                        <property name="halign">start</property>
+                                        <style>
+                                          <class name="flat"/>
+                                          <class name="remove-link"/>
+                                        </style>
+                                      </object>
+                                    </child>
                                   </object>
                                 </child>
 

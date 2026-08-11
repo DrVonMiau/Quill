@@ -6,7 +6,8 @@ class Book(GObject.Object):
     __gtype_name__ = "QuillBook"
 
     def __init__(self, id, title, author="", year=0, pages=0, cover_path="",
-                 status="want", rating=0, olid="", notes=""):
+                 status="want", rating=0, olid="", notes="", isbn="",
+                 description="", date_started=None, date_finished=None):
         super().__init__()
         self.id = id
         self.title = title
@@ -17,4 +18,8 @@ class Book(GObject.Object):
         self.status = status or "want"
         self.rating = rating or 0
         self.olid = olid or ""
+        self.isbn = isbn or ""
         self.notes = notes or ""
+        self.description = description or ""
+        self.date_started = date_started
+        self.date_finished = date_finished

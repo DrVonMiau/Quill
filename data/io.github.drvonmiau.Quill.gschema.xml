@@ -28,16 +28,17 @@
 				<choice value="read"/>
 				<choice value="reading"/>
 				<choice value="want"/>
+				<choice value="abandoned"/>
 			</choices>
 			<default>'reading'</default>
 			<summary>Last active shelf</summary>
 		</key>
 		<key name="sort-books" type="s">
-			<default>'recent'</default>
+			<default>'finished'</default>
 			<summary>Book sort order</summary>
 		</key>
 		<key name="cover-size" type="i">
-			<range min="110" max="200"/>
+			<range min="110" max="240"/>
 			<default>140</default>
 			<summary>Cover tile width</summary>
 			<description>Width in pixels of the book cover tiles in the library grid.</description>
