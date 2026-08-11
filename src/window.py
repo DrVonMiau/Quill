@@ -51,7 +51,7 @@ POINTER_CURSOR = Gdk.Cursor.new_from_name("pointer")
 
 SPACE_L = 24
 INFO_WIDTH = 300          # the floating info panel
-DETAIL_COVER_W = 268      # cover width inside the info panel
+DETAIL_COVER_W = 280      # cover width inside the 300px info panel
 
 
 @Gtk.Template(resource_path="/io/github/drvonmiau/Quill/window.ui")
@@ -276,6 +276,9 @@ class QuillWindow(Adw.ApplicationWindow):
         self.content_row.set_margin_bottom(margin_y)
         self.nav_row.set_margin_start(margin_x)
         self.nav_row.set_margin_end(margin_x + (gap + INFO_WIDTH if revealed else 0))
+        # Pin the panel to a fixed width so it never competes with the paper
+        # for slack (the paper alone absorbs it).
+        self.info_panel.set_size_request(INFO_WIDTH if revealed else 0, -1)
         self.info_revealer.set_margin_start(gap)
 
     # ---------- theme + window state ----------

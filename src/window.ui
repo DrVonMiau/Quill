@@ -315,9 +315,12 @@
                     <property name="transition-type">slide-left</property>
                     <property name="transition-duration">160</property>
                     <property name="reveal-child">false</property>
+                    <property name="hexpand">false</property>
                     <child>
                       <object class="GtkScrolledWindow" id="info_panel">
-                        <property name="hscrollbar-policy">never</property>
+                        <property name="hscrollbar-policy">automatic</property>
+                        <property name="propagate-natural-width">false</property>
+                        <property name="hexpand">false</property>
                         <property name="width-request">300</property>
                         <style>
                           <class name="info-panel"/>
@@ -326,12 +329,14 @@
                           <object class="GtkBox">
                             <property name="orientation">vertical</property>
                             <property name="spacing">16</property>
+                            <property name="width-request">300</property>
+                            <property name="hexpand">false</property>
                             <property name="valign">start</property>
 
                             <child>
                               <object class="GtkBox" id="detail_cover_slot">
                                 <property name="halign">center</property>
-                                <property name="hexpand">true</property>
+                                <property name="hexpand">false</property>
                               </object>
                             </child>
 
