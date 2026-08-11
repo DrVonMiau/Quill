@@ -14,6 +14,8 @@ pill tabs, teal/gold accents) with its sibling app **Lyre**.
   slides in when you select a book (cover, status, rating, dates, summary).
 - A three-way **status control** to move a book between shelves in place.
 - **Add books** by searching Open Library, with cover art fetched automatically.
+- **Import** an existing library from an **Openreads CSV export** (covers are
+  fetched in the background by ISBN/OLID).
 - **Star ratings** and an autosaving per-book **summary**.
 - A **cover-size slider** to scale the grid tiles, plus title/author search.
 - Light and dark themes that track the system, in the teal & gold house palette.

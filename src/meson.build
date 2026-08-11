@@ -33,6 +33,7 @@ quill_sources = [
   'library.py',
   'models.py',
   'openlibrary.py',
+  'csvimport.py',
   'widgets.py',
 ]
 

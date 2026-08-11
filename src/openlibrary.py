@@ -10,6 +10,7 @@ import urllib.request
 
 SEARCH_URL = "https://openlibrary.org/search.json"
 COVER_URL = "https://covers.openlibrary.org/b/id/{}-L.jpg"
+COVER_BY_KEY_URL = "https://covers.openlibrary.org/b/{}/{}-L.jpg"
 _UA = "Quill/0.1 (github.com/DrVonMiau/quill; books tracker)"
 _FIELDS = "key,title,author_name,first_publish_year,cover_i,number_of_pages_median,isbn"
 
@@ -57,3 +58,23 @@ def download_cover(cover_i, dest_path, timeout=20):
     with open(dest_path, "wb") as fh:
         fh.write(data)
     return str(dest_path)
+
+
+def download_cover_by_key(dest_path, olid="", isbn="", timeout=20):
+    """Fetch a cover by Open Library id (OLID) or ISBN — the identifiers an
+    import carries instead of a numeric cover id. Tries OLID first, then ISBN.
+    Returns the path on success, or None when no usable image is found."""
+    for kind, value in (("olid", olid), ("isbn", isbn)):
+        if not value:
+            continue
+        try:
+            with _get(COVER_BY_KEY_URL.format(kind, value), timeout) as resp:
+                data = resp.read()
+        except Exception:
+            continue
+        if len(data) < 1000:
+            continue
+        with open(dest_path, "wb") as fh:
+            fh.write(data)
+        return str(dest_path)
+    return None

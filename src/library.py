@@ -97,6 +97,36 @@ def add_book(con, *, title, author="", year=0, pages=0, olid="", isbn="",
     return cur.lastrowid
 
 
+def import_book(con, *, title, author="", year=0, pages=0, olid="", isbn="",
+                status="want", rating=0, notes="", date_started=None,
+                date_finished=None, date_added=None):
+    """Insert a book from an external import, carrying its rating, notes and
+    historical dates. Deduplicates against an existing book by Open Library id
+    (or, lacking one, by case-insensitive title + author) so re-importing the
+    same file doesn't create duplicates. Returns (book_id, created)."""
+    existing = None
+    if olid:
+        existing = con.execute("SELECT id FROM books WHERE olid=?", (olid,)).fetchone()
+    if existing is None:
+        existing = con.execute(
+            "SELECT id FROM books WHERE lower(title)=lower(?) "
+            "AND lower(author)=lower(?)", (title, author)).fetchone()
+    if existing:
+        return existing["id"], False
+
+    status = status if status in STATUSES else "want"
+    rating = max(0, min(5, rating))
+    cur = con.execute(
+        """INSERT INTO books (olid, isbn, title, author, year, pages, status,
+                              rating, notes, date_added, date_started, date_finished)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')), ?, ?)""",
+        (olid, isbn, title, author, year, pages, status, rating, notes,
+         date_added, date_started, date_finished),
+    )
+    con.commit()
+    return cur.lastrowid, True
+
+
 def set_status(con, book_id, status):
     if status not in STATUSES:
         return

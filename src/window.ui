@@ -9,6 +9,10 @@
         <attribute name="label" translatable="yes">Add a Book…</attribute>
         <attribute name="action">win.add-book</attribute>
       </item>
+      <item>
+        <attribute name="label" translatable="yes">Import from CSV…</attribute>
+        <attribute name="action">win.import-csv</attribute>
+      </item>
     </section>
     <section>
       <item>

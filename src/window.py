@@ -8,9 +8,11 @@ control, a star rating, metadata and an autosaving summary).
 """
 import datetime
 import threading
+import time
 
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
 
+from . import csvimport
 from . import library as lib
 from . import openlibrary as ol
 from .models import Book
@@ -105,6 +107,7 @@ class QuillWindow(Adw.ApplicationWindow):
         self._loading_detail = False
         self._notes_timer = 0
         self._cover_size_timer = 0
+        self._grid_refresh_timer = 0
         self._surface_width = 0
         self._surface_height = 0
         self._sort = self.settings.get_string("sort-books")
@@ -157,6 +160,10 @@ class QuillWindow(Adw.ApplicationWindow):
         prefs = Gio.SimpleAction.new("preferences", None)
         prefs.connect("activate", lambda *_a: self._open_preferences())
         self.add_action(prefs)
+
+        imp = Gio.SimpleAction.new("import-csv", None)
+        imp.connect("activate", lambda *_a: self._open_import_dialog())
+        self.add_action(imp)
 
         find = Gio.SimpleAction.new("find", None)
         find.connect("activate", lambda *_a: self.search_toggle_btn.set_active(
@@ -756,11 +763,86 @@ class QuillWindow(Adw.ApplicationWindow):
 
     def _cover_ready(self, book_id, path):
         lib.set_cover(self.con, book_id, path)
-        self._reload_grid()
+        self._schedule_grid_refresh()
         if self._detail_book_id == book_id and self._detail_cover is not None:
             self._detail_cover.set_placeholder("")
             self._detail_cover.set_path(path)
         return False
+
+    def _schedule_grid_refresh(self):
+        """Coalesce grid rebuilds when many covers land at once (bulk import)."""
+        if self._grid_refresh_timer:
+            return
+        self._grid_refresh_timer = GLib.timeout_add(400, self._do_grid_refresh)
+
+    def _do_grid_refresh(self):
+        self._grid_refresh_timer = 0
+        self._reload_grid()
+        return False
+
+    # ---------- import from CSV ----------
+
+    def _open_import_dialog(self):
+        dialog = Gtk.FileDialog(title="Import Books from CSV")
+        csv_filter = Gtk.FileFilter()
+        csv_filter.set_name("CSV files")
+        csv_filter.add_suffix("csv")
+        csv_filter.add_mime_type("text/csv")
+        filters = Gio.ListStore.new(Gtk.FileFilter)
+        filters.append(csv_filter)
+        dialog.set_filters(filters)
+        dialog.set_default_filter(csv_filter)
+        dialog.open(self, None, self._on_import_file_chosen)
+
+    def _on_import_file_chosen(self, dialog, result):
+        try:
+            gfile = dialog.open_finish(result)
+        except GLib.Error:
+            return  # dismissed
+        path = gfile.get_path() if gfile is not None else None
+        if path:
+            self._run_import(path)
+
+    def _run_import(self, path):
+        try:
+            with open(path, newline="", encoding="utf-8-sig") as fh:
+                books = csvimport.parse_openreads(fh)
+        except Exception:
+            self._toast("Couldn't read that CSV file.")
+            return
+
+        created, to_fetch = 0, []
+        for b in books:
+            book_id, was_created = lib.import_book(self.con, **b)
+            if was_created:
+                created += 1
+                if b["olid"] or b["isbn"]:
+                    to_fetch.append((book_id, b["olid"], b["isbn"]))
+
+        self._load_books()
+        skipped = len(books) - created
+        msg = f"Imported {created} book{'' if created == 1 else 's'}"
+        if skipped:
+            msg += f" · {skipped} already in library"
+        self._toast(msg)
+        if to_fetch:
+            self._fetch_covers_bulk(to_fetch)
+
+    def _fetch_covers_bulk(self, items):
+        """Fetch covers for imported books by OLID/ISBN on one background
+        thread, paced so Open Library isn't hammered."""
+        def work():
+            for book_id, olid, isbn in items:
+                dest = lib.COVERS_DIR / f"{book_id}.jpg"
+                try:
+                    path = ol.download_cover_by_key(dest, olid=olid, isbn=isbn)
+                except Exception:
+                    path = None
+                if path:
+                    GLib.idle_add(self._cover_ready, book_id, path)
+                time.sleep(0.2)
+
+        threading.Thread(target=work, daemon=True).start()
 
     @staticmethod
     def _clear_listbox(listbox):
