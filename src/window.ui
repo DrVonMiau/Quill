@@ -393,6 +393,24 @@
                             <property name="valign">start</property>
 
                             <child>
+                              <object class="GtkBox">
+                                <property name="halign">end</property>
+                                <child>
+                                  <object class="GtkMenuButton" id="detail_more_btn">
+                                    <property name="icon-name">view-more-symbolic</property>
+                                    <property name="tooltip-text" translatable="yes">Book actions</property>
+                                    <property name="valign">center</property>
+                                    <style>
+                                      <class name="flat"/>
+                                      <class name="circular"/>
+                                      <class name="titlebar-icon"/>
+                                    </style>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+
+                            <child>
                               <object class="GtkBox" id="detail_cover_slot">
                                 <property name="halign">center</property>
                                 <property name="hexpand">false</property>
@@ -569,36 +587,22 @@
                                     <property name="yalign">0</property>
                                     <property name="wrap">true</property>
                                     <property name="wrap-mode">word-char</property>
+                                    <property name="ellipsize">end</property>
+                                    <property name="lines">5</property>
                                     <property name="selectable">true</property>
                                     <style><class name="summary"/></style>
                                   </object>
                                 </child>
 
                                 <child>
-                                  <object class="GtkBox">
-                                    <property name="orientation">horizontal</property>
-                                    <property name="spacing">8</property>
-                                    <property name="margin-top">8</property>
-                                    <child>
-                                      <object class="GtkButton" id="detail_abandon_btn">
-                                        <property name="label" translatable="yes">Abandon</property>
-                                        <property name="halign">start</property>
-                                        <style>
-                                          <class name="flat"/>
-                                          <class name="remove-link"/>
-                                        </style>
-                                      </object>
-                                    </child>
-                                    <child>
-                                      <object class="GtkButton" id="detail_remove_btn">
-                                        <property name="label" translatable="yes">Remove from library</property>
-                                        <property name="halign">start</property>
-                                        <style>
-                                          <class name="flat"/>
-                                          <class name="remove-link"/>
-                                        </style>
-                                      </object>
-                                    </child>
+                                  <object class="GtkButton" id="detail_readmore_btn">
+                                    <property name="label" translatable="yes">Read more</property>
+                                    <property name="halign">start</property>
+                                    <property name="visible">false</property>
+                                    <style>
+                                      <class name="flat"/>
+                                      <class name="readmore-link"/>
+                                    </style>
                                   </object>
                                 </child>
 

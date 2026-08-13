@@ -128,7 +128,7 @@ class BarChart(Gtk.Widget):
 
     __gtype_name__ = "QuillBarChart"
 
-    def __init__(self, data, accent, height=170, value_fmt=None):
+    def __init__(self, data, accent, height=196, value_fmt=None):
         super().__init__()
         self._data = list(data)
         self._accent = accent
@@ -144,8 +144,8 @@ class BarChart(Gtk.Widget):
     def do_measure(self, orientation, _for_size):
         if orientation == Gtk.Orientation.VERTICAL:
             return (self._height, self._height, -1, -1)
-        min_w = max(160, len(self._data) * 18)
-        return (min_w, max(min_w, len(self._data) * 40), -1, -1)
+        min_w = max(160, len(self._data) * 16)
+        return (min_w, max(min_w, len(self._data) * 42), -1, -1)
 
     def do_snapshot(self, snapshot):
         w, h = self.get_width(), self.get_height()
@@ -155,16 +155,25 @@ class BarChart(Gtk.Widget):
         fg = self.get_color()
         label_c = _tint(fg, fg.alpha * 0.55)
         value_c = _tint(fg, fg.alpha * 0.85)
-        axis_c = _tint(fg, fg.alpha * 0.14)
+        grid_c = _tint(fg, fg.alpha * 0.10)
 
         max_v = max((v for _, v in self._data), default=0) or 1
-        pad_top, pad_bottom = 16, 22
+        pad_top, pad_bottom, pad_right = 16, 22, 24
+        chart_w = max(1.0, w - pad_right)
         chart_h = max(1.0, h - pad_top - pad_bottom)
         baseline = pad_top + chart_h
-        slot = w / n
-        bar_w = min(slot * 0.62, 46)
+        slot = chart_w / n
+        bar_w = min(slot * 0.6, 40)
 
-        snapshot.append_color(axis_c, Graphene.Rect().init(0, baseline, w, 1))
+        # Horizontal gridlines at 0 / ½ / max, with the max value labelled.
+        for frac in (0.0, 0.5, 1.0):
+            gy = baseline - chart_h * frac
+            snapshot.append_color(grid_c, Graphene.Rect().init(0, gy, w, 1))
+        self._text(snapshot, self._value_fmt(max_v), chart_w + pad_right / 2,
+                   pad_top - 6, pad_right + 8, label_c, 8)
+
+        show_values = n <= 14
+        label_step = max(1, math.ceil(n / 16))
         for i, (label, value) in enumerate(self._data):
             cx = i * slot + slot / 2
             bar_h = chart_h * (value / max_v)
@@ -175,13 +184,16 @@ class BarChart(Gtk.Widget):
                 snapshot.push_rounded_clip(rounded)
                 snapshot.append_color(self._accent, rect)
                 snapshot.pop()
-                self._text(snapshot, self._value_fmt(value), cx,
-                           baseline - bar_h - 14, slot, value_c, 8)
-            self._text(snapshot, label, cx, baseline + 4, slot, label_c, 8)
+                if show_values:
+                    self._text(snapshot, self._value_fmt(value), cx,
+                               baseline - bar_h - 14, slot, value_c, 8)
+            if i % label_step == 0:
+                self._text(snapshot, label, cx, baseline + 4, slot, label_c, 8)
 
-    def _text(self, snapshot, text, cx, top, width, color, size):
+    def _text(self, snapshot, text, cx, top, width, color, size,
+              align=Pango.Alignment.CENTER):
         layout = self.create_pango_layout(text)
-        layout.set_alignment(Pango.Alignment.CENTER)
+        layout.set_alignment(align)
         layout.set_ellipsize(Pango.EllipsizeMode.END)
         layout.set_width(int(width * Pango.SCALE))
         font = Pango.FontDescription("IBM Plex Mono")

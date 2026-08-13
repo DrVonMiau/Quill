@@ -106,8 +106,8 @@ class QuillWindow(Adw.ApplicationWindow):
     detail_pages = Gtk.Template.Child()
     detail_rating_box = Gtk.Template.Child()
     detail_summary = Gtk.Template.Child()
-    detail_abandon_btn = Gtk.Template.Child()
-    detail_remove_btn = Gtk.Template.Child()
+    detail_readmore_btn = Gtk.Template.Child()
+    detail_more_btn = Gtk.Template.Child()
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -153,8 +153,7 @@ class QuillWindow(Adw.ApplicationWindow):
         self.search_entry.connect("search-changed", self._on_search_changed)
         self.search_entry.connect("stop-search",
                                   lambda *_: self.search_toggle_btn.set_active(False))
-        self.detail_abandon_btn.connect("clicked", lambda *_: self._on_abandon())
-        self.detail_remove_btn.connect("clicked", lambda *_: self._confirm_delete())
+        self.detail_readmore_btn.connect("clicked", lambda *_: self._toggle_readmore())
 
         self.connect("close-request", self._on_close_request)
         self.connect("realize", self._on_realize)
@@ -190,6 +189,18 @@ class QuillWindow(Adw.ApplicationWindow):
             "sort-mode", GLib.VariantType.new("s"), GLib.Variant("s", self._sort))
         sort_mode.connect("activate", self._on_sort_mode)
         self.add_action(sort_mode)
+
+        # Per-book actions, shared by the detail "⋮" menu and the grid's
+        # right-click context menu. Each carries the target book id.
+        status_act = Gio.SimpleAction.new("book-status", GLib.VariantType.new("(xs)"))
+        status_act.connect("activate", self._act_book_status)
+        self.add_action(status_act)
+        for name, cb in (("book-cover", self._act_book_cover),
+                         ("book-abandon", self._act_book_abandon),
+                         ("book-remove", self._act_book_remove)):
+            act = Gio.SimpleAction.new(name, GLib.VariantType.new("x"))
+            act.connect("activate", cb)
+            self.add_action(act)
 
         app = self.get_application()
         if app is not None:
@@ -286,14 +297,18 @@ class QuillWindow(Adw.ApplicationWindow):
             margin_x = max(margin_x, centered)
         else:
             gap = 0
+        # The paper is flush to the window bottom (rounded top corners only);
+        # the nav band supplies its top gap, so content_row has no vertical
+        # margins. The info panel floats on the grey with a bottom margin.
         self.content_row.set_margin_start(margin_x)
         self.content_row.set_margin_end(margin_x)
         self.content_row.set_margin_top(0)
-        self.content_row.set_margin_bottom(margin_y)
+        self.content_row.set_margin_bottom(0)
         self.nav_row.set_margin_start(margin_x)
         self.nav_row.set_margin_end(margin_x + (gap + INFO_WIDTH if revealed else 0))
         self.info_panel.set_size_request(INFO_WIDTH if revealed else 0, -1)
         self.info_revealer.set_margin_start(gap)
+        self.info_revealer.set_margin_bottom(margin_y)
 
     # ---------- theme + window state ----------
 
@@ -398,7 +413,23 @@ class QuillWindow(Adw.ApplicationWindow):
         box.append(title)
         box.append(author)
         box.cover, box.title, box.author = cover, title, author
+        box._book_id = None
+        secondary = Gtk.GestureClick(button=Gdk.BUTTON_SECONDARY)
+        secondary.connect("pressed", self._on_card_secondary, box)
+        box.add_controller(secondary)
         return box
+
+    def _on_card_secondary(self, gesture, _n, x, y, box):
+        if box._book_id is None:
+            return
+        popover = Gtk.PopoverMenu.new_from_model(self._book_menu(box._book_id))
+        popover.set_parent(box)
+        popover.set_has_arrow(False)
+        rect = Gdk.Rectangle()
+        rect.x, rect.y, rect.width, rect.height = int(x), int(y), 1, 1
+        popover.set_pointing_to(rect)
+        popover.connect("closed", lambda p: p.unparent())
+        popover.popup()
 
     def _bind_card(self, item):
         book = item.get_item()
@@ -406,6 +437,7 @@ class QuillWindow(Adw.ApplicationWindow):
         if not hasattr(box, "cover"):
             box = self._card_widget()
             item.set_child(box)
+        box._book_id = book.id
         # Card width tracks the cover so the title/author never exceed it.
         w = self._cover_w
         chars = max(9, w // 8)
@@ -549,7 +581,8 @@ class QuillWindow(Adw.ApplicationWindow):
         return tile
 
     def _stat_section(self, title, chart):
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        box.add_css_class("chart-card")
         box.append(Gtk.Label(label=title, xalign=0, css_classes=["section-title"]))
         box.append(chart)
         return box
@@ -651,17 +684,9 @@ class QuillWindow(Adw.ApplicationWindow):
             nxt = child.get_next_sibling()
             self.detail_cover_slot.remove(child)
             child = nxt
-        self._detail_cover = Cover(row["title"][:18] if not row["cover_path"] else "",
-                                   width=DETAIL_COVER_W)
-        self._detail_cover.add_css_class("detail-cover")
-        self._detail_cover.set_path(row["cover_path"] or None)
-        self._detail_cover.set_cursor(POINTER_CURSOR)
-        self._detail_cover.set_tooltip_text("Click to change the cover")
-        click = Gtk.GestureClick()
-        click.connect("released", lambda *_a: self._open_cover_picker(book_id))
-        self._detail_cover.add_controller(click)
-        self.detail_cover_slot.append(self._detail_cover)
+        self.detail_cover_slot.append(self._build_detail_cover(row))
 
+        self.detail_more_btn.set_menu_model(self._book_menu(book_id))
         self.detail_title.set_label(row["title"])
         self.detail_author.set_label(row["author"] or "Unknown author")
         self.detail_date.set_label(self._format_dates(row))
@@ -674,6 +699,35 @@ class QuillWindow(Adw.ApplicationWindow):
         self.info_revealer.set_reveal_child(True)
         self._apply_layout_metrics()
         self._loading_detail = False
+
+    def _build_detail_cover(self, row):
+        """The detail cover, wrapped in an overlay that reveals a 'Change cover'
+        hint on hover; clicking anywhere on it opens the image picker."""
+        book_id = row["id"]
+        self._detail_cover = Cover(row["title"][:18] if not row["cover_path"] else "",
+                                   width=DETAIL_COVER_W)
+        self._detail_cover.add_css_class("detail-cover")
+        self._detail_cover.set_path(row["cover_path"] or None)
+
+        overlay = Gtk.Overlay(halign=Gtk.Align.CENTER)
+        overlay.add_css_class("cover-wrap")
+        overlay.set_child(self._detail_cover)
+
+        hint = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True, vexpand=True)
+        hint.add_css_class("change-overlay")
+        hint.set_can_target(False)
+        inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4,
+                        halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER, vexpand=True)
+        inner.append(Gtk.Image(icon_name="document-edit-symbolic", pixel_size=22))
+        inner.append(Gtk.Label(label="Change cover"))
+        hint.append(inner)
+        overlay.add_overlay(hint)
+
+        overlay.set_cursor(POINTER_CURSOR)
+        click = Gtk.GestureClick()
+        click.connect("released", lambda *_a: self._open_cover_picker(book_id))
+        overlay.add_controller(click)
+        return overlay
 
     def _close_detail(self):
         self._detail_book_id = None
@@ -705,16 +759,35 @@ class QuillWindow(Adw.ApplicationWindow):
 
     # ---------- summary (from Open Library) ----------
 
+    # Summaries longer than this get truncated to 5 lines with a "Read more".
+    _SUMMARY_TRUNCATE_AT = 320
+
     def _show_summary(self, row):
         desc = (row["description"] or "").strip()
         if desc:
-            self.detail_summary.set_label(desc)
-            return
-        if row["olid"] or row["isbn"]:
-            self.detail_summary.set_label("Loading summary…")
+            self._set_summary_text(desc)
+        elif row["olid"] or row["isbn"]:
+            self._set_summary_text("Loading summary…", placeholder=True)
             self._fetch_summary_async(row["id"], row["olid"], row["isbn"])
         else:
-            self.detail_summary.set_label("No summary available.")
+            self._set_summary_text("No summary available.", placeholder=True)
+
+    def _set_summary_text(self, text, placeholder=False):
+        self._summary_expanded = False
+        self.detail_summary.set_label(text)
+        if placeholder or len(text) <= self._SUMMARY_TRUNCATE_AT:
+            self.detail_summary.set_lines(-1 if placeholder else 5)
+            self.detail_readmore_btn.set_visible(False)
+        else:
+            self.detail_summary.set_lines(5)
+            self.detail_readmore_btn.set_label("Read more")
+            self.detail_readmore_btn.set_visible(True)
+
+    def _toggle_readmore(self):
+        self._summary_expanded = not self._summary_expanded
+        self.detail_summary.set_lines(-1 if self._summary_expanded else 5)
+        self.detail_readmore_btn.set_label(
+            "Read less" if self._summary_expanded else "Read more")
 
     def _fetch_summary_async(self, book_id, olid, isbn):
         def work():
@@ -727,7 +800,10 @@ class QuillWindow(Adw.ApplicationWindow):
         if desc:
             lib.set_description(self.con, book_id, desc)
         if self._detail_book_id == book_id:
-            self.detail_summary.set_label(desc if desc else "No summary available.")
+            if desc:
+                self._set_summary_text(desc)
+            else:
+                self._set_summary_text("No summary available.", placeholder=True)
         return False
 
     # ---------- change cover ----------
@@ -770,13 +846,7 @@ class QuillWindow(Adw.ApplicationWindow):
     def _on_status_clicked(self, _btn, status):
         if self._detail_book_id is None:
             return
-        lib.set_status(self.con, self._detail_book_id, status)
-        row = lib.get_book(self.con, self._detail_book_id)
-        if row:
-            self._render_status_control(row["status"])
-            self.detail_date.set_label(self._format_dates(row))
-        self._reload_grid()
-        self._toast(f"Moved to {SHELF_LABELS[status]}")
+        self._change_status(self._detail_book_id, status)
 
     def _on_star_clicked(self, n):
         if self._detail_book_id is None:
@@ -787,18 +857,67 @@ class QuillWindow(Adw.ApplicationWindow):
         self._render_stars(rating)
         self._reload_grid()
 
-    def _on_abandon(self):
-        if self._detail_book_id is None:
-            return
-        lib.set_status(self.con, self._detail_book_id, "abandoned")
-        self._render_status_control("abandoned")
-        self._reload_grid()
-        self._toast("Marked as abandoned")
+    # ---------- shared per-book actions (detail ⋮ menu + grid right-click) ----------
 
-    def _confirm_delete(self):
-        if self._detail_book_id is None:
+    def _book_menu(self, book_id):
+        row = lib.get_book(self.con, book_id)
+        status = row["status"] if row else ""
+        menu = Gio.Menu()
+
+        shelves = Gio.Menu()
+        for key in STATUS_CONTROL:
+            if key == status:
+                continue
+            item = Gio.MenuItem.new(f"Mark as {SHELF_LABELS[key]}", None)
+            item.set_action_and_target_value(
+                "win.book-status", GLib.Variant("(xs)", (book_id, key)))
+            shelves.append_item(item)
+        menu.append_section(None, shelves)
+
+        mid = Gio.Menu()
+        cover_item = Gio.MenuItem.new("Change Cover…", None)
+        cover_item.set_action_and_target_value("win.book-cover", GLib.Variant("x", book_id))
+        mid.append_item(cover_item)
+        if status != "abandoned":
+            ab = Gio.MenuItem.new("Mark as Abandoned", None)
+            ab.set_action_and_target_value("win.book-abandon", GLib.Variant("x", book_id))
+            mid.append_item(ab)
+        menu.append_section(None, mid)
+
+        danger = Gio.Menu()
+        rm = Gio.MenuItem.new("Remove from Library…", None)
+        rm.set_action_and_target_value("win.book-remove", GLib.Variant("x", book_id))
+        danger.append_item(rm)
+        menu.append_section(None, danger)
+        return menu
+
+    def _act_book_status(self, _action, param):
+        book_id, status = param.unpack()
+        self._change_status(book_id, status)
+
+    def _act_book_abandon(self, _action, param):
+        self._change_status(param.unpack(), "abandoned")
+
+    def _act_book_cover(self, _action, param):
+        self._open_cover_picker(param.unpack())
+
+    def _act_book_remove(self, _action, param):
+        self._confirm_delete(param.unpack())
+
+    def _change_status(self, book_id, status):
+        lib.set_status(self.con, book_id, status)
+        row = lib.get_book(self.con, book_id)
+        if self._detail_book_id == book_id and row:
+            self._render_status_control(row["status"])
+            self.detail_date.set_label(self._format_dates(row))
+            self.detail_more_btn.set_menu_model(self._book_menu(book_id))
+        self._reload_grid()
+        self._toast(f"Moved to {SHELF_LABELS.get(status, status)}")
+
+    def _confirm_delete(self, book_id):
+        if book_id is None:
             return
-        row = lib.get_book(self.con, self._detail_book_id)
+        row = lib.get_book(self.con, book_id)
         title = row["title"] if row else "this book"
         dialog = Adw.AlertDialog(
             heading="Remove book?",
@@ -806,15 +925,14 @@ class QuillWindow(Adw.ApplicationWindow):
         dialog.add_response("cancel", "Cancel")
         dialog.add_response("remove", "Remove")
         dialog.set_response_appearance("remove", Adw.ResponseAppearance.DESTRUCTIVE)
-        dialog.connect("response", lambda _d, r: self._do_delete() if r == "remove" else None)
+        dialog.connect("response",
+                       lambda _d, r: self._do_delete(book_id) if r == "remove" else None)
         dialog.present(self)
 
-    def _do_delete(self):
-        book_id = self._detail_book_id
-        if book_id is None:
-            return
+    def _do_delete(self, book_id):
         lib.delete_book(self.con, book_id)
-        self._close_detail()
+        if self._detail_book_id == book_id:
+            self._close_detail()
         self._load_books()
         self._toast("Book removed")
 
