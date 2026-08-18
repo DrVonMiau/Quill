@@ -107,7 +107,6 @@ class QuillWindow(Adw.ApplicationWindow):
     detail_rating_box = Gtk.Template.Child()
     detail_summary = Gtk.Template.Child()
     detail_readmore_btn = Gtk.Template.Child()
-    detail_more_btn = Gtk.Template.Child()
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -119,6 +118,7 @@ class QuillWindow(Adw.ApplicationWindow):
         self._search_query = ""
         self._detail_book_id = None
         self._detail_cover = None
+        self._detail_more_btn = None
         self._loading_detail = False
         self._cover_size_timer = 0
         self._grid_refresh_timer = 0
@@ -397,13 +397,16 @@ class QuillWindow(Adw.ApplicationWindow):
             self._open_book(item.id)
 
     def _card_widget(self):
+        # The card hugs the cover width and centres in its (equal-width) grid
+        # column, so the title/author sit exactly under the cover.
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6,
+                      halign=Gtk.Align.CENTER,
                       margin_top=6, margin_bottom=6, margin_start=6, margin_end=6)
         box.add_css_class("card-box")
         box.set_cursor(POINTER_CURSOR)
         cover = Cover("", width=self._cover_w)
         cover.add_css_class("card-cover")
-        cover.set_halign(Gtk.Align.CENTER)
+        cover.set_halign(Gtk.Align.FILL)
         title = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END, wrap=True, lines=2,
                           css_classes=["card-title"])
         title.set_valign(Gtk.Align.START)
@@ -438,10 +441,10 @@ class QuillWindow(Adw.ApplicationWindow):
             box = self._card_widget()
             item.set_child(box)
         box._book_id = book.id
-        # Card width tracks the cover so the title/author never exceed it.
+        # Card width == cover width, so the title/author never exceed it.
         w = self._cover_w
-        chars = max(9, w // 8)
-        box.set_size_request(w + 12, -1)
+        chars = max(8, (w - 4) // 8)
+        box.set_size_request(w, -1)
         box.cover.set_size(w)
         box.title.set_max_width_chars(chars)
         box.author.set_max_width_chars(chars)
@@ -686,7 +689,6 @@ class QuillWindow(Adw.ApplicationWindow):
             child = nxt
         self.detail_cover_slot.append(self._build_detail_cover(row))
 
-        self.detail_more_btn.set_menu_model(self._book_menu(book_id))
         self.detail_title.set_label(row["title"])
         self.detail_author.set_label(row["author"] or "Unknown author")
         self.detail_date.set_label(self._format_dates(row))
@@ -701,8 +703,7 @@ class QuillWindow(Adw.ApplicationWindow):
         self._loading_detail = False
 
     def _build_detail_cover(self, row):
-        """The detail cover, wrapped in an overlay that reveals a 'Change cover'
-        hint on hover; clicking anywhere on it opens the image picker."""
+        """The detail cover with a '⋮' actions menu overlaid at the top-right."""
         book_id = row["id"]
         self._detail_cover = Cover(row["title"][:18] if not row["cover_path"] else "",
                                    width=DETAIL_COVER_W)
@@ -710,23 +711,17 @@ class QuillWindow(Adw.ApplicationWindow):
         self._detail_cover.set_path(row["cover_path"] or None)
 
         overlay = Gtk.Overlay(halign=Gtk.Align.CENTER)
-        overlay.add_css_class("cover-wrap")
         overlay.set_child(self._detail_cover)
 
-        hint = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True, vexpand=True)
-        hint.add_css_class("change-overlay")
-        hint.set_can_target(False)
-        inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4,
-                        halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER, vexpand=True)
-        inner.append(Gtk.Image(icon_name="document-edit-symbolic", pixel_size=22))
-        inner.append(Gtk.Label(label="Change cover"))
-        hint.append(inner)
-        overlay.add_overlay(hint)
-
-        overlay.set_cursor(POINTER_CURSOR)
-        click = Gtk.GestureClick()
-        click.connect("released", lambda *_a: self._open_cover_picker(book_id))
-        overlay.add_controller(click)
+        more = Gtk.MenuButton(icon_name="view-more-symbolic",
+                              halign=Gtk.Align.END, valign=Gtk.Align.START,
+                              margin_top=8, margin_end=8,
+                              tooltip_text="Book actions")
+        more.add_css_class("cover-menu-btn")
+        more.set_menu_model(self._book_menu(book_id))
+        more.set_cursor(POINTER_CURSOR)
+        self._detail_more_btn = more
+        overlay.add_overlay(more)
         return overlay
 
     def _close_detail(self):
@@ -910,7 +905,8 @@ class QuillWindow(Adw.ApplicationWindow):
         if self._detail_book_id == book_id and row:
             self._render_status_control(row["status"])
             self.detail_date.set_label(self._format_dates(row))
-            self.detail_more_btn.set_menu_model(self._book_menu(book_id))
+            if self._detail_more_btn is not None:
+                self._detail_more_btn.set_menu_model(self._book_menu(book_id))
         self._reload_grid()
         self._toast(f"Moved to {SHELF_LABELS.get(status, status)}")
 

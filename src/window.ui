@@ -393,24 +393,6 @@
                             <property name="valign">start</property>
 
                             <child>
-                              <object class="GtkBox">
-                                <property name="halign">end</property>
-                                <child>
-                                  <object class="GtkMenuButton" id="detail_more_btn">
-                                    <property name="icon-name">view-more-symbolic</property>
-                                    <property name="tooltip-text" translatable="yes">Book actions</property>
-                                    <property name="valign">center</property>
-                                    <style>
-                                      <class name="flat"/>
-                                      <class name="circular"/>
-                                      <class name="titlebar-icon"/>
-                                    </style>
-                                  </object>
-                                </child>
-                              </object>
-                            </child>
-
-                            <child>
                               <object class="GtkBox" id="detail_cover_slot">
                                 <property name="halign">center</property>
                                 <property name="hexpand">false</property>

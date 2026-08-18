@@ -241,8 +241,12 @@ gridview.card-grid > child:selected .card-cover {
   font-weight: 500;
 }
 .status-btn.active {
-  background-color: alpha(@window_fg_color, 0.13);
-  color: @window_fg_color;
+  background-color: @quill_teal;
+  color: #ffffff;
+}
+window.dark .status-btn.active {
+  background-color: @quill_teal_light;
+  color: #1c1c1c;
 }
 
 /* details list */
@@ -303,21 +307,18 @@ window.dark .readmore-link {
   text-decoration: underline;
 }
 
-/* Change-cover hover overlay on the detail cover */
-.cover-wrap .change-overlay {
-  opacity: 0;
+/* '⋮' actions menu overlaid on the detail cover (top-right) */
+.cover-menu-btn {
+  min-width: 30px;
+  min-height: 30px;
+  padding: 0;
   border-radius: 8px;
-  background-color: alpha(#000, 0.55);
   color: #ffffff;
-  transition: opacity 130ms ease;
+  background-color: alpha(#000, 0.5);
+  box-shadow: 0 1px 3px alpha(#000, 0.35);
 }
-.cover-wrap:hover .change-overlay {
-  opacity: 1;
-}
-.change-overlay label {
-  font-family: "IBM Plex Mono", monospace;
-  font-size: 12px;
-  color: #ffffff;
+.cover-menu-btn:hover {
+  background-color: alpha(#000, 0.68);
 }
 
 .remove-link {
