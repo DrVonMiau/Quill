@@ -4,6 +4,8 @@ when present and a diagonal-striped placeholder (with a caption) otherwise.
 Covers are book-shaped (portrait), so the tile is a fixed width with a 3:2
 height. It paints with GTK4's native Snapshot/GSK API — no pycairo needed.
 """
+import calendar
+import datetime
 import math
 
 from gi.repository import Gdk, Graphene, Gsk, Gtk, Pango
@@ -11,6 +13,8 @@ from gi.repository import Gdk, Graphene, Gsk, Gtk, Pango
 STRIPE_STEP = 7
 STRIPE_WIDTH = 2.4
 COVER_RATIO = 1.5  # height / width — standard-ish book proportion
+
+_POINTER = Gdk.Cursor.new_from_name("pointer")
 
 
 class _StripeArea(Gtk.Widget):
@@ -203,3 +207,79 @@ class BarChart(Gtk.Widget):
         snapshot.translate(Graphene.Point().init(cx - width / 2, top))
         snapshot.append_layout(layout, color)
         snapshot.restore()
+
+
+class DatePicker(Gtk.Box):
+    """A compact month calendar whose weeks always start on Monday (GtkCalendar
+    can't be forced off the locale's first weekday). Calls `on_selected` with an
+    ISO "YYYY-MM-DD" string when a day is picked."""
+
+    __gtype_name__ = "QuillDatePicker"
+
+    _WEEKDAYS = ("Mo", "Tu", "We", "Th", "Fr", "Sa", "Su")
+
+    def __init__(self, initial=None, on_selected=None):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        self.add_css_class("date-picker")
+        self._on_selected = on_selected
+        self._selected = initial  # (y, m, d) or None
+        base = datetime.date(initial[0], initial[1], 1) if initial \
+            else datetime.date.today().replace(day=1)
+        self._year, self._month = base.year, base.month
+
+        header = Gtk.Box(spacing=4)
+        prev = Gtk.Button(icon_name="go-previous-symbolic", css_classes=["flat", "circular"])
+        nxt = Gtk.Button(icon_name="go-next-symbolic", css_classes=["flat", "circular"])
+        for b, step in ((prev, -1), (nxt, 1)):
+            b.set_cursor(_POINTER)
+            b.connect("clicked", lambda _b, s=step: self._shift(s))
+        self._title = Gtk.Label(hexpand=True, css_classes=["dp-title"])
+        header.append(prev)
+        header.append(self._title)
+        header.append(nxt)
+        self.append(header)
+
+        self._grid = Gtk.Grid(column_homogeneous=True, row_spacing=2, column_spacing=2)
+        for i, name in enumerate(self._WEEKDAYS):
+            self._grid.attach(Gtk.Label(label=name, css_classes=["dp-weekday"]), i, 0, 1, 1)
+        self.append(self._grid)
+
+        self._day_buttons = []
+        self._rebuild()
+
+    def _shift(self, delta):
+        m, y = self._month + delta, self._year
+        while m < 1:
+            m += 12
+            y -= 1
+        while m > 12:
+            m -= 12
+            y += 1
+        self._year, self._month = y, m
+        self._rebuild()
+
+    def _rebuild(self):
+        for btn in self._day_buttons:
+            self._grid.remove(btn)
+        self._day_buttons.clear()
+        self._title.set_label(datetime.date(self._year, self._month, 1).strftime("%B %Y"))
+        first_weekday = datetime.date(self._year, self._month, 1).weekday()  # Mon=0
+        days = calendar.monthrange(self._year, self._month)[1]
+        col, row = first_weekday, 1
+        for day in range(1, days + 1):
+            btn = Gtk.Button(label=str(day), css_classes=["flat", "dp-day"])
+            btn.set_cursor(_POINTER)
+            btn.connect("clicked", lambda _b, d=day: self._pick(d))
+            if self._selected == (self._year, self._month, day):
+                btn.add_css_class("selected")
+            self._grid.attach(btn, col, row, 1, 1)
+            self._day_buttons.append(btn)
+            col += 1
+            if col > 6:
+                col, row = 0, row + 1
+
+    def _pick(self, day):
+        self._selected = (self._year, self._month, day)
+        self._rebuild()
+        if self._on_selected:
+            self._on_selected(f"{self._year:04d}-{self._month:02d}-{day:02d}")

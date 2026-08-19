@@ -19,7 +19,7 @@ from . import csvimport
 from . import library as lib
 from . import openlibrary as ol
 from .models import Book
-from .widgets import BarChart, Cover
+from .widgets import BarChart, Cover, DatePicker
 
 APP_ID = "io.github.drvonmiau.Quill"
 
@@ -100,6 +100,7 @@ class QuillWindow(Adw.ApplicationWindow):
     status_read_btn = Gtk.Template.Child()
     status_reading_btn = Gtk.Template.Child()
     status_toread_btn = Gtk.Template.Child()
+    detail_more_btn = Gtk.Template.Child()
     detail_title = Gtk.Template.Child()
     detail_author = Gtk.Template.Child()
     detail_date_btn = Gtk.Template.Child()
@@ -118,7 +119,6 @@ class QuillWindow(Adw.ApplicationWindow):
         self._search_query = ""
         self._detail_book_id = None
         self._detail_cover = None
-        self._detail_more_btn = None
         self._loading_detail = False
         self._cover_size_timer = 0
         self._grid_refresh_timer = 0
@@ -196,6 +196,7 @@ class QuillWindow(Adw.ApplicationWindow):
         status_act.connect("activate", self._act_book_status)
         self.add_action(status_act)
         for name, cb in (("book-cover", self._act_book_cover),
+                         ("book-find-cover", self._act_book_find_cover),
                          ("book-abandon", self._act_book_abandon),
                          ("book-remove", self._act_book_remove)):
             act = Gio.SimpleAction.new(name, GLib.VariantType.new("x"))
@@ -688,6 +689,7 @@ class QuillWindow(Adw.ApplicationWindow):
             self.detail_cover_slot.remove(child)
             child = nxt
         self.detail_cover_slot.append(self._build_detail_cover(row))
+        self.detail_more_btn.set_menu_model(self._book_menu(book_id))
 
         self.detail_title.set_label(row["title"])
         self.detail_author.set_label(row["author"] or "Unknown author")
@@ -703,25 +705,24 @@ class QuillWindow(Adw.ApplicationWindow):
         self._loading_detail = False
 
     def _build_detail_cover(self, row):
-        """The detail cover with a '⋮' actions menu overlaid at the top-right."""
-        book_id = row["id"]
+        """The detail cover with a close 'X' that appears on hover to dismiss
+        the info panel."""
         self._detail_cover = Cover(row["title"][:18] if not row["cover_path"] else "",
                                    width=DETAIL_COVER_W)
         self._detail_cover.add_css_class("detail-cover")
         self._detail_cover.set_path(row["cover_path"] or None)
 
         overlay = Gtk.Overlay(halign=Gtk.Align.CENTER)
+        overlay.add_css_class("cover-wrap")
         overlay.set_child(self._detail_cover)
 
-        more = Gtk.MenuButton(icon_name="view-more-symbolic",
-                              halign=Gtk.Align.END, valign=Gtk.Align.START,
-                              margin_top=8, margin_end=8,
-                              tooltip_text="Book actions")
-        more.add_css_class("cover-menu-btn")
-        more.set_menu_model(self._book_menu(book_id))
-        more.set_cursor(POINTER_CURSOR)
-        self._detail_more_btn = more
-        overlay.add_overlay(more)
+        close = Gtk.Button(icon_name="window-close-symbolic",
+                           halign=Gtk.Align.END, valign=Gtk.Align.START,
+                           margin_top=8, margin_end=8, tooltip_text="Close")
+        close.add_css_class("cover-close-btn")
+        close.set_cursor(POINTER_CURSOR)
+        close.connect("clicked", lambda *_: self._close_detail())
+        overlay.add_overlay(close)
         return overlay
 
     def _close_detail(self):
@@ -776,14 +777,10 @@ class QuillWindow(Adw.ApplicationWindow):
             header.append(clear)
             section.append(header)
 
-            cal = Gtk.Calendar()
-            ymd = self._parse_ymd(row[field])
-            if ymd:
-                cal.select_day(GLib.DateTime.new_local(ymd[0], ymd[1], ymd[2], 12, 0, 0))
-            # Connect after the initial select_day so it doesn't fire on open.
-            cal.connect("day-selected",
-                        lambda c, f=field: self._on_calendar_day(book_id, f, c))
-            section.append(cal)
+            picker = DatePicker(
+                initial=self._parse_ymd(row[field]),
+                on_selected=lambda v, f=field: self._apply_date(book_id, f, v))
+            section.append(picker)
             box.append(section)
         pop.set_child(box)
         return pop
@@ -797,11 +794,6 @@ class QuillWindow(Adw.ApplicationWindow):
         except ValueError:
             return None
         return (d.year, d.month, d.day)
-
-    def _on_calendar_day(self, book_id, field, calendar):
-        dt = calendar.get_date()
-        value = f"{dt.get_year():04d}-{dt.get_month():02d}-{dt.get_day_of_month():02d}"
-        self._apply_date(book_id, field, value)
 
     def _apply_date(self, book_id, field, value):
         lib.set_book_date(self.con, book_id, field, value)
@@ -932,6 +924,9 @@ class QuillWindow(Adw.ApplicationWindow):
         menu.append_section(None, shelves)
 
         mid = Gio.Menu()
+        find_item = Gio.MenuItem.new("Find Cover Online", None)
+        find_item.set_action_and_target_value("win.book-find-cover", GLib.Variant("x", book_id))
+        mid.append_item(find_item)
         cover_item = Gio.MenuItem.new("Change Cover…", None)
         cover_item.set_action_and_target_value("win.book-cover", GLib.Variant("x", book_id))
         mid.append_item(cover_item)
@@ -958,6 +953,39 @@ class QuillWindow(Adw.ApplicationWindow):
     def _act_book_cover(self, _action, param):
         self._open_cover_picker(param.unpack())
 
+    def _act_book_find_cover(self, _action, param):
+        self._find_cover_online(param.unpack())
+
+    def _find_cover_online(self, book_id):
+        row = lib.get_book(self.con, book_id)
+        if not row:
+            return
+        olid, isbn = row["olid"] or "", row["isbn"] or ""
+        query = f'{row["title"]} {row["author"] or ""}'.strip()
+        self._toast("Searching for a cover…")
+
+        def work():
+            dest = lib.COVERS_DIR / f"{book_id}.jpg"
+            path = None
+            try:
+                if olid or isbn:
+                    path = ol.download_cover_by_key(dest, olid=olid, isbn=isbn)
+                if not path and query:
+                    for res in ol.search(query)[:5]:
+                        if res.get("cover_i"):
+                            path = ol.download_cover(res["cover_i"], dest)
+                            if path:
+                                break
+            except Exception:
+                path = None
+            if path:
+                GLib.idle_add(self._cover_ready, book_id, path)
+                GLib.idle_add(self._toast, "Cover updated")
+            else:
+                GLib.idle_add(self._toast, "No cover found online")
+
+        threading.Thread(target=work, daemon=True).start()
+
     def _act_book_remove(self, _action, param):
         self._confirm_delete(param.unpack())
 
@@ -967,8 +995,7 @@ class QuillWindow(Adw.ApplicationWindow):
         if self._detail_book_id == book_id and row:
             self._render_status_control(row["status"])
             self._refresh_date_button(row)
-            if self._detail_more_btn is not None:
-                self._detail_more_btn.set_menu_model(self._book_menu(book_id))
+            self.detail_more_btn.set_menu_model(self._book_menu(book_id))
         self._reload_grid()
         self._toast(f"Moved to {SHELF_LABELS.get(status, status)}")
 

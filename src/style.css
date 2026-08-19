@@ -164,7 +164,13 @@ gridview.card-grid > child:selected {
   background: none;
 }
 gridview.card-grid > child:selected .card-cover {
-  box-shadow: 0 0 0 3px @quill_teal, 0 8px 20px alpha(#000, 0.28);
+  box-shadow: 0 0 0 4px @quill_teal, 0 8px 20px alpha(#000, 0.28);
+}
+gridview.card-grid > child:selected .card-title {
+  color: @quill_teal;
+}
+window.dark gridview.card-grid > child:selected .card-title {
+  color: @quill_teal_light;
 }
 
 .card-box {
@@ -324,18 +330,69 @@ window.dark .readmore-link {
   text-decoration: underline;
 }
 
-/* '⋮' actions menu overlaid on the detail cover (top-right) */
-.cover-menu-btn {
-  min-width: 30px;
-  min-height: 30px;
+/* Close 'X' that fades in over the detail cover on hover (closes the panel). */
+.cover-wrap .cover-close-btn {
+  opacity: 0;
+  min-width: 28px;
+  min-height: 28px;
   padding: 0;
-  border-radius: 8px;
+  border-radius: 9999px;
   color: #ffffff;
-  background-color: alpha(#000, 0.5);
+  background-color: alpha(#000, 0.55);
   box-shadow: 0 1px 3px alpha(#000, 0.35);
+  transition: opacity 120ms ease;
 }
-.cover-menu-btn:hover {
-  background-color: alpha(#000, 0.68);
+.cover-wrap:hover .cover-close-btn {
+  opacity: 1;
+}
+.cover-wrap .cover-close-btn:hover {
+  background-color: alpha(#000, 0.72);
+}
+
+/* '⋮' actions button in the status row (matches the collapsed segments). */
+.status-more {
+  min-width: 44px;
+}
+
+/* Monday-first date picker */
+.date-picker {
+  padding: 2px;
+}
+.dp-title {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: @window_fg_color;
+}
+.dp-weekday {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  color: @quill_text_soft;
+  padding-bottom: 2px;
+}
+window.dark .dp-weekday {
+  color: @quill_text_soft_dark;
+}
+.dp-day {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  min-width: 30px;
+  min-height: 28px;
+  padding: 0;
+  border-radius: 7px;
+  color: @window_fg_color;
+}
+.dp-day:hover {
+  background-color: alpha(@window_fg_color, 0.08);
+}
+.dp-day.selected {
+  background-color: @quill_teal;
+  color: #ffffff;
+  font-weight: 700;
+}
+window.dark .dp-day.selected {
+  background-color: @quill_teal_light;
+  color: #1c1c1c;
 }
 
 .remove-link {
@@ -425,7 +482,7 @@ window.dark .card-subtitle {
   color: @quill_teal_light;
 }
 window.dark gridview.card-grid > child:selected .card-cover {
-  box-shadow: 0 0 0 3px @quill_teal_light, 0 8px 20px alpha(#000, 0.45);
+  box-shadow: 0 0 0 4px @quill_teal_light, 0 8px 20px alpha(#000, 0.45);
 }
 window.dark .empty-cta {
   background-color: @quill_teal_light;
