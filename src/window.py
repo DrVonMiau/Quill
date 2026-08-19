@@ -102,7 +102,7 @@ class QuillWindow(Adw.ApplicationWindow):
     status_toread_btn = Gtk.Template.Child()
     detail_title = Gtk.Template.Child()
     detail_author = Gtk.Template.Child()
-    detail_date = Gtk.Template.Child()
+    detail_date_btn = Gtk.Template.Child()
     detail_pages = Gtk.Template.Child()
     detail_rating_box = Gtk.Template.Child()
     detail_summary = Gtk.Template.Child()
@@ -691,7 +691,7 @@ class QuillWindow(Adw.ApplicationWindow):
 
         self.detail_title.set_label(row["title"])
         self.detail_author.set_label(row["author"] or "Unknown author")
-        self.detail_date.set_label(self._format_dates(row))
+        self._refresh_date_button(row)
         self.detail_pages.set_label(str(row["pages"]) if row["pages"] else "—")
 
         self._render_status_control(row["status"])
@@ -751,6 +751,68 @@ class QuillWindow(Adw.ApplicationWindow):
         except ValueError:
             return None
         return f"{d.day} {d.strftime('%b')} {d.year}"
+
+    # ---------- reading dates (editable) ----------
+
+    def _refresh_date_button(self, row):
+        label = Gtk.Label(label=self._format_dates(row), xalign=1,
+                          ellipsize=Pango.EllipsizeMode.END, css_classes=["detail-val"])
+        self.detail_date_btn.set_child(label)
+        self.detail_date_btn.set_popover(self._build_date_editor(row["id"], row))
+
+    def _build_date_editor(self, book_id, row):
+        pop = Gtk.Popover()
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12,
+                      margin_top=12, margin_bottom=12, margin_start=12, margin_end=12)
+        for field, title in (("date_started", "Started"), ("date_finished", "Finished")):
+            section = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+            header = Gtk.Box(spacing=8)
+            header.append(Gtk.Label(label=title, xalign=0, hexpand=True,
+                                    css_classes=["detail-key"]))
+            clear = Gtk.Button(label="Clear", css_classes=["flat", "readmore-link"])
+            clear.set_cursor(POINTER_CURSOR)
+            clear.connect("clicked",
+                          lambda _b, f=field: self._apply_date(book_id, f, None))
+            header.append(clear)
+            section.append(header)
+
+            cal = Gtk.Calendar()
+            ymd = self._parse_ymd(row[field])
+            if ymd:
+                cal.select_day(GLib.DateTime.new_local(ymd[0], ymd[1], ymd[2], 12, 0, 0))
+            # Connect after the initial select_day so it doesn't fire on open.
+            cal.connect("day-selected",
+                        lambda c, f=field: self._on_calendar_day(book_id, f, c))
+            section.append(cal)
+            box.append(section)
+        pop.set_child(box)
+        return pop
+
+    @staticmethod
+    def _parse_ymd(value):
+        if not value:
+            return None
+        try:
+            d = datetime.datetime.strptime(str(value)[:10], "%Y-%m-%d")
+        except ValueError:
+            return None
+        return (d.year, d.month, d.day)
+
+    def _on_calendar_day(self, book_id, field, calendar):
+        dt = calendar.get_date()
+        value = f"{dt.get_year():04d}-{dt.get_month():02d}-{dt.get_day_of_month():02d}"
+        self._apply_date(book_id, field, value)
+
+    def _apply_date(self, book_id, field, value):
+        lib.set_book_date(self.con, book_id, field, value)
+        if self._detail_book_id == book_id:
+            row = lib.get_book(self.con, book_id)
+            if row:
+                label = Gtk.Label(label=self._format_dates(row), xalign=1,
+                                  ellipsize=Pango.EllipsizeMode.END,
+                                  css_classes=["detail-val"])
+                self.detail_date_btn.set_child(label)
+        self._reload_grid()
 
     # ---------- summary (from Open Library) ----------
 
@@ -904,7 +966,7 @@ class QuillWindow(Adw.ApplicationWindow):
         row = lib.get_book(self.con, book_id)
         if self._detail_book_id == book_id and row:
             self._render_status_control(row["status"])
-            self.detail_date.set_label(self._format_dates(row))
+            self._refresh_date_button(row)
             if self._detail_more_btn is not None:
                 self._detail_more_btn.set_menu_model(self._book_menu(book_id))
         self._reload_grid()

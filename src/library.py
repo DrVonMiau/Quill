@@ -174,6 +174,15 @@ def set_description(con, book_id, description):
     con.commit()
 
 
+def set_book_date(con, book_id, field, value):
+    """Set a reading date. `field` is whitelisted to avoid SQL injection;
+    `value` is an ISO date string ("YYYY-MM-DD") or None to clear it."""
+    if field not in ("date_started", "date_finished"):
+        return
+    con.execute(f"UPDATE books SET {field}=? WHERE id=?", (value, book_id))
+    con.commit()
+
+
 def set_cover(con, book_id, cover_path):
     con.execute("UPDATE books SET cover_path=? WHERE id=?", (cover_path, book_id))
     con.commit()
