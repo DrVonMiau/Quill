@@ -38,6 +38,8 @@ CREATE TABLE IF NOT EXISTS books (
     rating        INTEGER NOT NULL DEFAULT 0,
     notes         TEXT DEFAULT '',
     description   TEXT DEFAULT '',
+    tags          TEXT DEFAULT '',
+    current_page  INTEGER NOT NULL DEFAULT 0,
     date_added    TEXT DEFAULT (datetime('now')),
     date_started  TEXT,
     date_finished TEXT
@@ -48,6 +50,8 @@ CREATE INDEX IF NOT EXISTS idx_books_status ON books(status);
 # Columns added after v0.1.0; applied to pre-existing databases on connect.
 _MIGRATIONS = (
     ("description", "TEXT DEFAULT ''"),
+    ("tags", "TEXT DEFAULT ''"),
+    ("current_page", "INTEGER NOT NULL DEFAULT 0"),
 )
 
 
@@ -113,11 +117,12 @@ def add_book(con, *, title, author="", year=0, pages=0, olid="", isbn="",
 
 
 def import_book(con, *, title, author="", year=0, pages=0, olid="", isbn="",
-                status="want", rating=0, notes="", date_started=None,
-                date_finished=None, date_added=None):
-    """Insert a book from an external import, carrying its rating, notes and
-    historical dates. Deduplicates against an existing book by Open Library id
-    (or, lacking one, by case-insensitive title + author) so re-importing the
+                status="want", rating=0, notes="", tags="", current_page=0,
+                description="", date_started=None, date_finished=None,
+                date_added=None):
+    """Insert a book from an external import, carrying its rating, notes, tags
+    and historical dates. Deduplicates against an existing book by Open Library
+    id (or, lacking one, by case-insensitive title + author) so re-importing the
     same file doesn't create duplicates. Returns (book_id, created)."""
     existing = None
     if olid:
@@ -133,29 +138,25 @@ def import_book(con, *, title, author="", year=0, pages=0, olid="", isbn="",
     rating = max(0, min(5, rating))
     cur = con.execute(
         """INSERT INTO books (olid, isbn, title, author, year, pages, status,
-                              rating, notes, date_added, date_started, date_finished)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')), ?, ?)""",
-        (olid, isbn, title, author, year, pages, status, rating, notes,
-         date_added, date_started, date_finished),
+                              rating, notes, tags, current_page, description,
+                              date_added, date_started, date_finished)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                   COALESCE(?, datetime('now')), ?, ?)""",
+        (olid, isbn, title, author, year, pages, status, rating, notes, tags,
+         max(0, current_page), description, date_added, date_started,
+         date_finished),
     )
     con.commit()
     return cur.lastrowid, True
 
 
 def set_status(con, book_id, status):
+    """Move a book to a shelf. Reading-date stamping is driven by the window
+    layer (which confirms before overwriting an existing date), so this only
+    changes the status."""
     if status not in STATUSES:
         return
-    # Stamp the started/finished dates the first time a book reaches a shelf.
-    if status == "reading":
-        con.execute(
-            "UPDATE books SET status=?, date_started=COALESCE(date_started, datetime('now')) "
-            "WHERE id=?", (status, book_id))
-    elif status == "read":
-        con.execute(
-            "UPDATE books SET status=?, date_finished=COALESCE(date_finished, datetime('now')) "
-            "WHERE id=?", (status, book_id))
-    else:
-        con.execute("UPDATE books SET status=? WHERE id=?", (status, book_id))
+    con.execute("UPDATE books SET status=? WHERE id=?", (status, book_id))
     con.commit()
 
 
@@ -167,6 +168,28 @@ def set_rating(con, book_id, rating):
 def set_notes(con, book_id, notes):
     con.execute("UPDATE books SET notes=? WHERE id=?", (notes, book_id))
     con.commit()
+
+
+def set_tags(con, book_id, tags):
+    con.execute("UPDATE books SET tags=? WHERE id=?", ((tags or "").strip(), book_id))
+    con.commit()
+
+
+def set_progress(con, book_id, current_page):
+    con.execute("UPDATE books SET current_page=? WHERE id=?",
+                (max(0, int(current_page)), book_id))
+    con.commit()
+
+
+def all_tags(con):
+    """Return the distinct tags used across the library, sorted, for suggestions."""
+    seen = {}
+    for row in con.execute("SELECT tags FROM books WHERE tags != ''"):
+        for tag in (row["tags"] or "").split(","):
+            tag = tag.strip()
+            if tag:
+                seen[tag.lower()] = tag
+    return [seen[k] for k in sorted(seen)]
 
 
 def set_description(con, book_id, description):

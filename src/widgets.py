@@ -218,11 +218,13 @@ class DatePicker(Gtk.Box):
 
     _WEEKDAYS = ("Mo", "Tu", "We", "Th", "Fr", "Sa", "Su")
 
-    def __init__(self, initial=None, on_selected=None):
+    def __init__(self, initial=None, on_selected=None,
+                 range_start=None, range_end=None):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         self.add_css_class("date-picker")
         self._on_selected = on_selected
         self._selected = initial  # (y, m, d) or None
+        self._range = (range_start, range_end)  # (y,m,d) tuples or None, inclusive
         base = datetime.date(initial[0], initial[1], 1) if initial \
             else datetime.date.today().replace(day=1)
         self._year, self._month = base.year, base.month
@@ -247,6 +249,27 @@ class DatePicker(Gtk.Box):
         self._day_buttons = []
         self._rebuild()
 
+    def get_selected(self):
+        return self._selected
+
+    def set_range(self, start, end):
+        """Set the (start, end) span to shade, as (y,m,d) tuples or None."""
+        self._range = (start, end)
+        self._rebuild()
+
+    def clear_selection(self):
+        self._selected = None
+        self._rebuild()
+
+    @staticmethod
+    def _as_date(triple):
+        if not triple:
+            return None
+        try:
+            return datetime.date(triple[0], triple[1], triple[2])
+        except (TypeError, ValueError):
+            return None
+
     def _shift(self, delta):
         m, y = self._month + delta, self._year
         while m < 1:
@@ -265,6 +288,8 @@ class DatePicker(Gtk.Box):
         self._title.set_label(datetime.date(self._year, self._month, 1).strftime("%B %Y"))
         first_weekday = datetime.date(self._year, self._month, 1).weekday()  # Mon=0
         days = calendar.monthrange(self._year, self._month)[1]
+        rstart, rend = self._as_date(self._range[0]), self._as_date(self._range[1])
+        show_range = rstart is not None and rend is not None and rstart <= rend
         col, row = first_weekday, 1
         for day in range(1, days + 1):
             btn = Gtk.Button(label=str(day), css_classes=["flat", "dp-day"])
@@ -272,6 +297,9 @@ class DatePicker(Gtk.Box):
             btn.connect("clicked", lambda _b, d=day: self._pick(d))
             if self._selected == (self._year, self._month, day):
                 btn.add_css_class("selected")
+            elif show_range and rstart <= datetime.date(self._year, self._month, day) <= rend:
+                # Days between the started and finished dates read as a light band.
+                btn.add_css_class("in-range")
             self._grid.attach(btn, col, row, 1, 1)
             self._day_buttons.append(btn)
             col += 1

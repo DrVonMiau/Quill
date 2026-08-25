@@ -46,7 +46,9 @@ def search(query, limit=20, timeout=15):
             "year": doc.get("first_publish_year") or 0,
             "pages": doc.get("number_of_pages_median") or 0,
             "cover_i": doc.get("cover_i"),
+            "cover_url": "",   # OL covers come by id; kept for a uniform shape
             "isbn": isbns[0] if isbns else "",
+            "description": "",  # fetched lazily via fetch_description()
         })
     return results
 

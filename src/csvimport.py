@@ -36,6 +36,15 @@ def _to_int(value):
         return 0
 
 
+def _norm_tags(value):
+    """Normalise a tags cell (comma- or semicolon-separated) to "a, b, c"."""
+    value = (value or "").strip()
+    if not value:
+        return ""
+    parts = [p.strip() for p in value.replace(";", ",").split(",")]
+    return ", ".join(p for p in parts if p)
+
+
 def _to_rating(value):
     try:
         return max(0, min(5, round(float(value))))
@@ -109,6 +118,9 @@ def parse_openreads(fileobj):
             "status": status,
             "rating": _to_rating(row.get("rating")),
             "notes": notes,
+            "tags": _norm_tags(row.get("tags")),
+            "current_page": _to_int(row.get("current_page")),
+            "description": (row.get("description") or "").strip(),
             "date_started": started,
             "date_finished": finished,
             "date_added": _norm_dt(row.get("date_added")),

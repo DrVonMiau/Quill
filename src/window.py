@@ -15,11 +15,19 @@ import time
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
 
 from . import analytics
+from . import csvexport
 from . import csvimport
+from . import googlebooks
 from . import library as lib
 from . import openlibrary as ol
 from .models import Book
 from .widgets import BarChart, Cover, DatePicker
+
+# Search backends, keyed by the setting value and offered in the add dialog.
+SEARCH_BACKENDS = [
+    ("openlibrary", "Open Library", ol),
+    ("googlebooks", "Google Books", googlebooks),
+]
 
 APP_ID = "io.github.drvonmiau.Quill"
 
@@ -105,7 +113,10 @@ class QuillWindow(Adw.ApplicationWindow):
     detail_author = Gtk.Template.Child()
     detail_date_btn = Gtk.Template.Child()
     detail_pages = Gtk.Template.Child()
+    detail_progress_btn = Gtk.Template.Child()
+    detail_progress_bar = Gtk.Template.Child()
     detail_rating_box = Gtk.Template.Child()
+    detail_tags_btn = Gtk.Template.Child()
     detail_summary = Gtk.Template.Child()
     detail_readmore_btn = Gtk.Template.Child()
 
@@ -176,9 +187,17 @@ class QuillWindow(Adw.ApplicationWindow):
         prefs.connect("activate", lambda *_a: self._open_preferences())
         self.add_action(prefs)
 
+        manual = Gio.SimpleAction.new("add-manual", None)
+        manual.connect("activate", lambda *_a: self._open_manual_dialog())
+        self.add_action(manual)
+
         imp = Gio.SimpleAction.new("import-csv", None)
         imp.connect("activate", lambda *_a: self._open_import_dialog())
         self.add_action(imp)
+
+        exp = Gio.SimpleAction.new("export-csv", None)
+        exp.connect("activate", lambda *_a: self._open_export_dialog())
+        self.add_action(exp)
 
         find = Gio.SimpleAction.new("find", None)
         find.connect("activate", lambda *_a: self.search_toggle_btn.set_active(
@@ -465,7 +484,8 @@ class QuillWindow(Adw.ApplicationWindow):
             Book(id=r["id"], title=r["title"], author=r["author"], year=r["year"],
                  pages=r["pages"], cover_path=r["cover_path"], status=r["status"],
                  rating=r["rating"], olid=r["olid"], isbn=r["isbn"], notes=r["notes"],
-                 description=r["description"], date_started=r["date_started"],
+                 description=r["description"], tags=r["tags"],
+                 current_page=r["current_page"], date_started=r["date_started"],
                  date_finished=r["date_finished"])
             for r in lib.all_books(self.con)
         ]
@@ -689,15 +709,17 @@ class QuillWindow(Adw.ApplicationWindow):
             self.detail_cover_slot.remove(child)
             child = nxt
         self.detail_cover_slot.append(self._build_detail_cover(row))
-        self.detail_more_btn.set_menu_model(self._book_menu(book_id))
+        self.detail_more_btn.set_menu_model(self._book_menu(book_id, include_shelves=False))
 
         self.detail_title.set_label(row["title"])
         self.detail_author.set_label(row["author"] or "Unknown author")
         self._refresh_date_button(row)
         self.detail_pages.set_label(str(row["pages"]) if row["pages"] else "—")
+        self._refresh_progress(row)
 
         self._render_status_control(row["status"])
         self._render_stars(row["rating"])
+        self._refresh_tags(row)
         self._show_summary(row)
 
         self.info_revealer.set_reveal_child(True)
@@ -765,6 +787,25 @@ class QuillWindow(Adw.ApplicationWindow):
         pop = Gtk.Popover()
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12,
                       margin_top=12, margin_bottom=12, margin_start=12, margin_end=12)
+        pickers = {}
+
+        def refresh_ranges():
+            start = pickers["date_started"].get_selected()
+            end = pickers["date_finished"].get_selected()
+            for picker in pickers.values():
+                picker.set_range(start, end)
+
+        def on_pick(field, value):
+            self._apply_date(book_id, field, value)
+            refresh_ranges()
+
+        def on_clear(field):
+            pickers[field].clear_selection()
+            self._apply_date(book_id, field, None)
+            refresh_ranges()
+
+        start_t = self._parse_ymd(row["date_started"])
+        finish_t = self._parse_ymd(row["date_finished"])
         for field, title in (("date_started", "Started"), ("date_finished", "Finished")):
             section = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
             header = Gtk.Box(spacing=8)
@@ -772,14 +813,15 @@ class QuillWindow(Adw.ApplicationWindow):
                                     css_classes=["detail-key"]))
             clear = Gtk.Button(label="Clear", css_classes=["flat", "readmore-link"])
             clear.set_cursor(POINTER_CURSOR)
-            clear.connect("clicked",
-                          lambda _b, f=field: self._apply_date(book_id, f, None))
+            clear.connect("clicked", lambda _b, f=field: on_clear(f))
             header.append(clear)
             section.append(header)
 
             picker = DatePicker(
                 initial=self._parse_ymd(row[field]),
-                on_selected=lambda v, f=field: self._apply_date(book_id, f, v))
+                on_selected=lambda v, f=field: on_pick(f, v),
+                range_start=start_t, range_end=finish_t)
+            pickers[field] = picker
             section.append(picker)
             box.append(section)
         pop.set_child(box)
@@ -804,6 +846,128 @@ class QuillWindow(Adw.ApplicationWindow):
                                   ellipsize=Pango.EllipsizeMode.END,
                                   css_classes=["detail-val"])
                 self.detail_date_btn.set_child(label)
+        self._reload_grid()
+
+    # ---------- reading progress (current page) ----------
+
+    def _render_progress_face(self, row):
+        pages = row["pages"] or 0
+        current = row["current_page"] or 0
+        if pages > 0:
+            current = min(current, pages)
+            label = f"{current} / {pages}"
+            self.detail_progress_bar.set_fraction(current / pages)
+            self.detail_progress_bar.set_visible(True)
+        elif current > 0:
+            label = f"page {current}"
+            self.detail_progress_bar.set_visible(False)
+        else:
+            label = "Not started"
+            self.detail_progress_bar.set_visible(False)
+        self.detail_progress_btn.set_child(
+            Gtk.Label(label=label, xalign=1, css_classes=["detail-val"]))
+
+    def _refresh_progress(self, row):
+        self._render_progress_face(row)
+        self.detail_progress_btn.set_popover(self._build_progress_editor(row["id"], row))
+
+    def _build_progress_editor(self, book_id, row):
+        pop = Gtk.Popover()
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10,
+                      margin_top=12, margin_bottom=12, margin_start=12, margin_end=12)
+        pages = row["pages"] or 0
+        upper = float(pages if pages > 0 else 100000)
+        box.append(Gtk.Label(label="Current page", xalign=0, css_classes=["detail-key"]))
+
+        adj = Gtk.Adjustment(lower=0, upper=upper, step_increment=1, page_increment=10,
+                             value=min(row["current_page"] or 0, upper))
+        spin = Gtk.SpinButton(adjustment=adj, climb_rate=1, digits=0, numeric=True)
+        spin.connect("value-changed",
+                     lambda s: self._apply_progress(book_id, int(s.get_value())))
+        box.append(spin)
+
+        if pages > 0:
+            quick = Gtk.Box(spacing=6)
+            reset = Gtk.Button(label="Reset", css_classes=["flat", "readmore-link"])
+            reset.set_cursor(POINTER_CURSOR)
+            reset.connect("clicked", lambda *_: spin.set_value(0))
+            done = Gtk.Button(label="Finished", css_classes=["flat", "readmore-link"])
+            done.set_cursor(POINTER_CURSOR)
+            done.connect("clicked", lambda *_: spin.set_value(pages))
+            quick.append(reset)
+            quick.append(done)
+            box.append(quick)
+        pop.set_child(box)
+        return pop
+
+    def _apply_progress(self, book_id, page):
+        lib.set_progress(self.con, book_id, page)
+        if self._detail_book_id == book_id:
+            row = lib.get_book(self.con, book_id)
+            if row:
+                self._render_progress_face(row)  # refresh face without closing the popover
+
+    # ---------- tags / genres ----------
+
+    @staticmethod
+    def _normalize_tags(text):
+        return ", ".join(t.strip() for t in (text or "").split(",") if t.strip())
+
+    def _render_tags_face(self, tags):
+        self.detail_tags_btn.set_child(Gtk.Label(
+            label=tags or "Add tags…", xalign=1, ellipsize=Pango.EllipsizeMode.END,
+            css_classes=["detail-val"]))
+
+    def _refresh_tags(self, row):
+        self._render_tags_face(row["tags"] or "")
+        self.detail_tags_btn.set_popover(self._build_tags_editor(row["id"], row))
+
+    def _build_tags_editor(self, book_id, row):
+        pop = Gtk.Popover()
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10,
+                      margin_top=12, margin_bottom=12, margin_start=12, margin_end=12)
+        box.set_size_request(240, -1)
+
+        entry = Gtk.Entry(text=row["tags"] or "",
+                          placeholder_text="e.g. sci-fi, favourites")
+        entry.connect("activate", lambda e: (self._apply_tags(book_id, e.get_text()),
+                                             pop.popdown()))
+        box.append(entry)
+
+        existing = [t for t in lib.all_tags(self.con)
+                    if t.lower() not in
+                    {x.strip().lower() for x in (row["tags"] or "").split(",")}]
+        if existing:
+            box.append(Gtk.Label(label="Existing tags", xalign=0,
+                                 css_classes=["mono-dim"]))
+            flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,
+                               max_children_per_line=3, column_spacing=6, row_spacing=6)
+            for tag in existing:
+                chip = Gtk.Button(label=tag, css_classes=["flat", "tag-chip"])
+                chip.set_cursor(POINTER_CURSOR)
+                chip.connect("clicked", lambda _b, t=tag: self._append_tag(entry, t))
+                flow.append(chip)
+            box.append(flow)
+
+        # Save when the popover is dismissed, so typing then clicking away sticks.
+        pop.connect("closed", lambda *_: self._apply_tags(book_id, entry.get_text()))
+        pop.set_child(box)
+        return pop
+
+    def _append_tag(self, entry, tag):
+        current = [t.strip() for t in entry.get_text().split(",") if t.strip()]
+        if tag not in current:
+            current.append(tag)
+        entry.set_text(", ".join(current))
+
+    def _apply_tags(self, book_id, text):
+        tags = self._normalize_tags(text)
+        row = lib.get_book(self.con, book_id)
+        if row is None or (row["tags"] or "") == tags:
+            return  # unchanged — skip a needless write + grid reload
+        lib.set_tags(self.con, book_id, tags)
+        if self._detail_book_id == book_id:
+            self._render_tags_face(tags)
         self._reload_grid()
 
     # ---------- summary (from Open Library) ----------
@@ -908,20 +1072,25 @@ class QuillWindow(Adw.ApplicationWindow):
 
     # ---------- shared per-book actions (detail ⋮ menu + grid right-click) ----------
 
-    def _book_menu(self, book_id):
+    def _book_menu(self, book_id, include_shelves=True):
+        """Build the per-book actions menu. The detail panel's ⋮ passes
+        include_shelves=False because the segmented status control already
+        offers Read/Reading/To read right beside it; the grid right-click menu
+        keeps them, since it has no status control of its own."""
         row = lib.get_book(self.con, book_id)
         status = row["status"] if row else ""
         menu = Gio.Menu()
 
-        shelves = Gio.Menu()
-        for key in STATUS_CONTROL:
-            if key == status:
-                continue
-            item = Gio.MenuItem.new(f"Mark as {SHELF_LABELS[key]}", None)
-            item.set_action_and_target_value(
-                "win.book-status", GLib.Variant("(xs)", (book_id, key)))
-            shelves.append_item(item)
-        menu.append_section(None, shelves)
+        if include_shelves:
+            shelves = Gio.Menu()
+            for key in STATUS_CONTROL:
+                if key == status:
+                    continue
+                item = Gio.MenuItem.new(f"Mark as {SHELF_LABELS[key]}", None)
+                item.set_action_and_target_value(
+                    "win.book-status", GLib.Variant("(xs)", (book_id, key)))
+                shelves.append_item(item)
+            menu.append_section(None, shelves)
 
         mid = Gio.Menu()
         find_item = Gio.MenuItem.new("Find Cover Online", None)
@@ -989,15 +1158,72 @@ class QuillWindow(Adw.ApplicationWindow):
     def _act_book_remove(self, _action, param):
         self._confirm_delete(param.unpack())
 
+    # Moving onto a shelf stamps the matching reading date: Reading -> started,
+    # Read -> finished.
+    _STATUS_DATE_FIELD = {"reading": "date_started", "read": "date_finished"}
+
+    @staticmethod
+    def _today():
+        return datetime.date.today().isoformat()
+
     def _change_status(self, book_id, status):
+        row = lib.get_book(self.con, book_id)
+        if not row or row["status"] == status:
+            return
+        field = self._STATUS_DATE_FIELD.get(status)
+        existing = row[field] if field else None
+        if field and existing:
+            # A date is already recorded — confirm before overwriting it.
+            self._confirm_date_change(book_id, status, field, existing)
+        elif field:
+            # First time onto this shelf: capture today's date automatically.
+            self._commit_status(book_id, status, set_field=field, set_value=self._today())
+        else:
+            self._commit_status(book_id, status)
+
+    def _confirm_date_change(self, book_id, status, field, existing):
+        kind = "start" if field == "date_started" else "finish"
+        nice = self._fmt_date(existing) or existing
+        dialog = Adw.AlertDialog(
+            heading=f"Update {kind} date?",
+            body=(f"“{kind.capitalize()} date” is already set to {nice}. "
+                  f"Moving this book to {SHELF_LABELS.get(status, status)} can "
+                  f"update it to today, or keep the existing date."))
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("keep", "Keep existing")
+        dialog.add_response("update", "Set to today")
+        dialog.set_response_appearance("update", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("keep")
+        dialog.set_close_response("cancel")
+
+        def on_response(_d, response):
+            if response == "update":
+                self._commit_status(book_id, status,
+                                    set_field=field, set_value=self._today())
+            elif response == "keep":
+                self._commit_status(book_id, status)
+            else:  # cancelled: nothing changed, re-sync the control to the old status
+                self._resync_detail(book_id)
+
+        dialog.connect("response", on_response)
+        dialog.present(self)
+
+    def _commit_status(self, book_id, status, set_field=None, set_value=None):
         lib.set_status(self.con, book_id, status)
+        if set_field is not None:
+            lib.set_book_date(self.con, book_id, set_field, set_value)
+        self._resync_detail(book_id)
+        self._reload_grid()
+        self._toast(f"Moved to {SHELF_LABELS.get(status, status)}")
+
+    def _resync_detail(self, book_id):
         row = lib.get_book(self.con, book_id)
         if self._detail_book_id == book_id and row:
             self._render_status_control(row["status"])
             self._refresh_date_button(row)
-            self.detail_more_btn.set_menu_model(self._book_menu(book_id))
-        self._reload_grid()
-        self._toast(f"Moved to {SHELF_LABELS.get(status, status)}")
+            self._refresh_progress(row)
+            self.detail_more_btn.set_menu_model(
+                self._book_menu(book_id, include_shelves=False))
 
     def _confirm_delete(self, book_id):
         if book_id is None:
@@ -1037,11 +1263,20 @@ class QuillWindow(Adw.ApplicationWindow):
 
         shelf_dd = Gtk.DropDown.new_from_strings([SHELF_LABELS[s] for s in STATUS_CONTROL])
         shelf_dd.set_selected(STATUS_CONTROL.index("want"))
+        source_dd = Gtk.DropDown.new_from_strings([name for _k, name, _m in SEARCH_BACKENDS])
+        saved_source = self.settings.get_string("search-source")
+        source_dd.set_selected(next(
+            (i for i, (k, _n, _m) in enumerate(SEARCH_BACKENDS) if k == saved_source), 0))
+        source_dd.connect("notify::selected", lambda dd, _p: self.settings.set_string(
+            "search-source", SEARCH_BACKENDS[dd.get_selected()][0]))
         shelf_row = Gtk.Box(spacing=8)
         shelf_row.append(Gtk.Label(label="Add to", css_classes=["mono-dim"]))
         shelf_row.append(shelf_dd)
+        shelf_row.append(Gtk.Box(hexpand=True))
+        shelf_row.append(Gtk.Label(label="Source", css_classes=["mono-dim"]))
+        shelf_row.append(source_dd)
 
-        status_lbl = Gtk.Label(label="Type to search Open Library.",
+        status_lbl = Gtk.Label(label="Type to search for a book.",
                                css_classes=["mono-dim"], xalign=0)
         listbox = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE,
                               css_classes=["boxed-list"])
@@ -1061,15 +1296,17 @@ class QuillWindow(Adw.ApplicationWindow):
             query = entry.get_text().strip()
             if not query:
                 self._clear_listbox(listbox)
-                status_lbl.set_label("Type to search Open Library.")
+                status_lbl.set_label("Type to search for a book.")
                 return False
             status_lbl.set_label("Searching…")
             state["token"] += 1
             token = state["token"]
+            idx = source_dd.get_selected()
+            backend = SEARCH_BACKENDS[idx][2] if 0 <= idx < len(SEARCH_BACKENDS) else ol
 
             def work():
                 try:
-                    results = ol.search(query)
+                    results = backend.search(query)
                     err = None
                 except Exception as exc:
                     results, err = [], str(exc)
@@ -1084,7 +1321,7 @@ class QuillWindow(Adw.ApplicationWindow):
             state["results"] = results
             self._clear_listbox(listbox)
             if err:
-                status_lbl.set_label("Couldn't reach Open Library. Check your connection.")
+                status_lbl.set_label("Couldn't reach the book service. Check your connection.")
             elif not results:
                 status_lbl.set_label("No matches.")
             else:
@@ -1135,11 +1372,18 @@ class QuillWindow(Adw.ApplicationWindow):
         self._toast(f'Added “{res["title"]}”')
         self._load_books()
         dialog.close()
-        cover_i = res.get("cover_i")
-        if cover_i:
-            self._fetch_cover_async(book_id, cover_i)
-        if res["olid"] or res.get("isbn"):
-            self._fetch_summary_async(book_id, res["olid"], res.get("isbn", ""))
+
+        if res.get("cover_i"):
+            self._fetch_cover_async(book_id, res["cover_i"])
+        elif res.get("cover_url"):
+            self._fetch_cover_url_async(book_id, res["cover_url"])
+
+        # Backends that return a description inline (Google Books) store it now;
+        # otherwise fall back to Open Library's lazy lookup by OLID/ISBN.
+        if res.get("description"):
+            lib.set_description(self.con, book_id, res["description"])
+        elif res.get("olid") or res.get("isbn"):
+            self._fetch_summary_async(book_id, res.get("olid", ""), res.get("isbn", ""))
 
     def _fetch_cover_async(self, book_id, cover_i):
         dest = lib.COVERS_DIR / f"{book_id}.jpg"
@@ -1147,6 +1391,19 @@ class QuillWindow(Adw.ApplicationWindow):
         def work():
             try:
                 path = ol.download_cover(cover_i, dest)
+            except Exception:
+                path = None
+            if path:
+                GLib.idle_add(self._cover_ready, book_id, path)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _fetch_cover_url_async(self, book_id, url):
+        dest = lib.COVERS_DIR / f"{book_id}.jpg"
+
+        def work():
+            try:
+                path = googlebooks.download_cover_url(url, dest)
             except Exception:
                 path = None
             if path:
@@ -1169,6 +1426,73 @@ class QuillWindow(Adw.ApplicationWindow):
             nxt = child.get_next_sibling()
             listbox.remove(child)
             child = nxt
+
+    # ---------- add manually ----------
+
+    def _open_manual_dialog(self):
+        dialog = Adw.Dialog()
+        dialog.set_title("Add a Book")
+        dialog.set_content_width(440)
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16,
+                      margin_top=16, margin_bottom=16, margin_start=16, margin_end=16)
+        group = Adw.PreferencesGroup(
+            description="For a book that isn't on Open Library or Google Books.")
+
+        title_row = Adw.EntryRow(title="Title")
+        author_row = Adw.EntryRow(title="Author")
+        group.add(title_row)
+        group.add(author_row)
+
+        year_row = Adw.SpinRow.new_with_range(0, 3000, 1)
+        year_row.set_title("Year")
+        year_row.set_value(0)
+        pages_row = Adw.SpinRow.new_with_range(0, 100000, 1)
+        pages_row.set_title("Pages")
+        pages_row.set_value(0)
+        group.add(year_row)
+        group.add(pages_row)
+
+        shelf_row = Adw.ComboRow(
+            title="Shelf",
+            model=Gtk.StringList.new([SHELF_LABELS[s] for s in STATUS_CONTROL]))
+        shelf_row.set_selected(STATUS_CONTROL.index("want"))
+        group.add(shelf_row)
+
+        tags_row = Adw.EntryRow(title="Tags (comma-separated)")
+        group.add(tags_row)
+        box.append(group)
+
+        add_btn = Gtk.Button(label="Add Book", halign=Gtk.Align.CENTER,
+                             sensitive=False, css_classes=["empty-cta"])
+        add_btn.set_cursor(POINTER_CURSOR)
+        title_row.connect("changed",
+                          lambda r: add_btn.set_sensitive(bool(r.get_text().strip())))
+        add_btn.connect("clicked", lambda *_: self._save_manual(
+            dialog, title_row, author_row, year_row, pages_row, shelf_row, tags_row))
+        box.append(add_btn)
+
+        dialog.set_child(box)
+        dialog.present(self)
+        title_row.grab_focus()
+
+    def _save_manual(self, dialog, title_row, author_row, year_row, pages_row,
+                     shelf_row, tags_row):
+        title = title_row.get_text().strip()
+        if not title:
+            return
+        idx = shelf_row.get_selected()
+        status = STATUS_CONTROL[idx] if 0 <= idx < len(STATUS_CONTROL) else "want"
+        book_id = lib.add_book(
+            self.con, title=title, author=author_row.get_text().strip(),
+            year=int(year_row.get_value()), pages=int(pages_row.get_value()),
+            status=status)
+        tags = self._normalize_tags(tags_row.get_text())
+        if tags:
+            lib.set_tags(self.con, book_id, tags)
+        self._toast(f'Added “{title}”')
+        self._load_books()
+        dialog.close()
 
     # ---------- import from CSV ----------
 
@@ -1233,6 +1557,42 @@ class QuillWindow(Adw.ApplicationWindow):
                 time.sleep(0.2)
 
         threading.Thread(target=work, daemon=True).start()
+
+    # ---------- export to CSV ----------
+
+    def _open_export_dialog(self):
+        if not self._books_all:
+            self._toast("Your library is empty — nothing to export.")
+            return
+        dialog = Gtk.FileDialog(title="Export Library to CSV")
+        dialog.set_initial_name("quill-library.csv")
+        csv_filter = Gtk.FileFilter()
+        csv_filter.set_name("CSV files")
+        csv_filter.add_suffix("csv")
+        csv_filter.add_mime_type("text/csv")
+        filters = Gio.ListStore.new(Gtk.FileFilter)
+        filters.append(csv_filter)
+        dialog.set_filters(filters)
+        dialog.set_default_filter(csv_filter)
+        dialog.save(self, None, self._on_export_file_chosen)
+
+    def _on_export_file_chosen(self, dialog, result):
+        try:
+            gfile = dialog.save_finish(result)
+        except GLib.Error:
+            return  # dismissed
+        path = gfile.get_path() if gfile is not None else None
+        if not path:
+            return
+        if not path.lower().endswith(".csv"):
+            path += ".csv"
+        try:
+            with open(path, "w", newline="", encoding="utf-8") as fh:
+                count = csvexport.write_csv(fh, lib.all_books(self.con))
+        except OSError:
+            self._toast("Couldn't write that file.")
+            return
+        self._toast(f"Exported {count} book{'' if count == 1 else 's'}")
 
     # ---------- preferences ----------
 

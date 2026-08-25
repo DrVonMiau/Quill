@@ -9,13 +9,23 @@ runtime. It shares its visual language (grey desktop + paper card + segmented
 pill tabs, teal/gold accents) with its sibling app **Lyre**.
 
 ## Features
-- **Read / Reading / To read / Abandoned** shelves as segmented tabs.
+- **Read / Reading / To read / Abandoned** shelves as segmented tabs, plus a
+  **Stats** tab with reading analytics.
 - **Master–detail** layout: a paper card of cover tiles with an info panel that
-  slides in when you select a book (cover, status, rating, dates, summary).
-- A three-way **status control** to move a book between shelves in place.
-- **Add books** by searching Open Library, with cover art fetched automatically.
-- **Import** an existing library from an **Openreads CSV export** (covers are
-  fetched in the background by ISBN/OLID).
+  slides in when you select a book (cover, status, rating, dates, progress,
+  tags, summary).
+- A three-way **status control** to move a book between shelves in place;
+  moving to Reading/Read **captures the start/finish date** automatically, and
+  asks before changing a date that's already set.
+- **Reading dates** you can edit in a Monday-first calendar that **highlights
+  the whole started→finished span**, plus **reading progress** (current page)
+  with a slim progress bar.
+- **Add books** by searching **Open Library or Google Books** (switchable), or
+  **add manually** for titles not in either catalogue. Cover art and summaries
+  are fetched automatically.
+- **Per-book tags/genres**, editable from the info panel.
+- **Import** an existing library from an **Openreads CSV export** and **export**
+  your library back to a round-trippable CSV.
 - **Star ratings** and an autosaving per-book **summary**.
 - A **cover-size slider** to scale the grid tiles, plus title/author search.
 - Light and dark themes that track the system, in the teal & gold house palette.
@@ -34,20 +44,23 @@ meson install -C _build      # installs the gschema so settings work
 ```
 
 ## Roadmap ideas
-- Google Books as a second search backend (behind the same `openlibrary.search()` shape).
-- Manual "add book" entry for titles not on Open Library.
-- Reading progress (current page) and reading dates on the detail page.
-- Import/export (CSV) and per-book tags/genres.
+- Import from **Goodreads** (and other platforms) — the CSV importer already
+  handles Openreads; Goodreads' export shape is the next target.
+- Browse/filter the library by **tag**.
 
 ## Notes on the source layout
 | File | Responsibility |
 |------|----------------|
 | `src/main.py` | App entry / `do_activate`, builds `QuillWindow`. |
 | `src/window.py` | The whole UI: shelves, cover grid, book detail, add-via-search dialog. |
-| `src/library.py` | SQLite library (books, status, rating, notes). Pure, no GTK. |
-| `src/openlibrary.py` | Open Library search + cover download (stdlib only). |
+| `src/library.py` | SQLite library (books, status, rating, notes, tags, progress, dates). Pure, no GTK. |
+| `src/openlibrary.py` | Open Library search + cover/summary download (stdlib only). |
+| `src/googlebooks.py` | Google Books search backend (same result shape as Open Library). |
+| `src/csvimport.py` | Openreads CSV import parser. |
+| `src/csvexport.py` | CSV export writer (round-trips through the importer). |
+| `src/analytics.py` | Reading statistics for the Stats tab. |
 | `src/models.py` | The `Book` GObject model. |
-| `src/widgets.py` | The portrait `Cover` tile (image or striped placeholder). |
+| `src/widgets.py` | The portrait `Cover` tile, `BarChart`, and Monday-first `DatePicker`. |
 | `src/window.ui` | GTK template. |
 | `src/style.css` | Styling (teal/gold accents). |
 | `io.github.drvonmiau.Quill.json` | Flatpak manifest. |

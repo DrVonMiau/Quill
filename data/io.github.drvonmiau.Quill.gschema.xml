@@ -37,6 +37,15 @@
 			<default>'finished'</default>
 			<summary>Book sort order</summary>
 		</key>
+		<key name="search-source" type="s">
+			<choices>
+				<choice value="openlibrary"/>
+				<choice value="googlebooks"/>
+			</choices>
+			<default>'openlibrary'</default>
+			<summary>Book search backend</summary>
+			<description>Which online catalogue the Add-a-Book search queries.</description>
+		</key>
 		<key name="cover-size" type="i">
 			<range min="110" max="240"/>
 			<default>140</default>

@@ -10,8 +10,16 @@
         <attribute name="action">win.add-book</attribute>
       </item>
       <item>
+        <attribute name="label" translatable="yes">Add Manually…</attribute>
+        <attribute name="action">win.add-manual</attribute>
+      </item>
+      <item>
         <attribute name="label" translatable="yes">Import from CSV…</attribute>
         <attribute name="action">win.import-csv</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Export to CSV…</attribute>
+        <attribute name="action">win.export-csv</attribute>
       </item>
     </section>
     <section>
@@ -560,6 +568,68 @@
                                         <property name="hexpand">true</property>
                                         <property name="xalign">1</property>
                                         <style><class name="detail-val"/></style>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+
+                                <child>
+                                  <object class="GtkBox">
+                                    <property name="spacing">12</property>
+                                    <child>
+                                      <object class="GtkLabel">
+                                        <property name="label" translatable="yes">Progress</property>
+                                        <property name="xalign">0</property>
+                                        <property name="valign">center</property>
+                                        <property name="hexpand">true</property>
+                                        <style><class name="detail-key"/></style>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="GtkMenuButton" id="detail_progress_btn">
+                                        <property name="halign">end</property>
+                                        <property name="valign">center</property>
+                                        <property name="tooltip-text" translatable="yes">Set reading progress</property>
+                                        <style>
+                                          <class name="flat"/>
+                                          <class name="date-edit"/>
+                                        </style>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+
+                                <child>
+                                  <object class="GtkProgressBar" id="detail_progress_bar">
+                                    <property name="visible">false</property>
+                                    <property name="valign">center</property>
+                                    <style>
+                                      <class name="reading-progress"/>
+                                    </style>
+                                  </object>
+                                </child>
+
+                                <child>
+                                  <object class="GtkBox">
+                                    <property name="spacing">12</property>
+                                    <child>
+                                      <object class="GtkLabel">
+                                        <property name="label" translatable="yes">Tags</property>
+                                        <property name="xalign">0</property>
+                                        <property name="valign">center</property>
+                                        <style><class name="detail-key"/></style>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="GtkMenuButton" id="detail_tags_btn">
+                                        <property name="hexpand">true</property>
+                                        <property name="halign">end</property>
+                                        <property name="valign">center</property>
+                                        <property name="tooltip-text" translatable="yes">Edit tags</property>
+                                        <style>
+                                          <class name="flat"/>
+                                          <class name="date-edit"/>
+                                        </style>
                                       </object>
                                     </child>
                                   </object>
