@@ -9,8 +9,10 @@ import urllib.parse
 import urllib.request
 
 SEARCH_URL = "https://openlibrary.org/search.json"
-COVER_URL = "https://covers.openlibrary.org/b/id/{}-L.jpg"
-COVER_BY_KEY_URL = "https://covers.openlibrary.org/b/{}/{}-L.jpg"
+# ?default=false makes Open Library return HTTP 404 for a missing cover instead
+# of a tiny blank placeholder image, so callers can tell "no cover" apart.
+COVER_URL = "https://covers.openlibrary.org/b/id/{}-L.jpg?default=false"
+COVER_BY_KEY_URL = "https://covers.openlibrary.org/b/{}/{}-L.jpg?default=false"
 OL_BASE = "https://openlibrary.org"
 _UA = "Quill/0.1 (github.com/DrVonMiau/quill; books tracker)"
 _FIELDS = "key,title,author_name,first_publish_year,cover_i,number_of_pages_median,isbn"
@@ -59,8 +61,11 @@ def download_cover(cover_i, dest_path, timeout=20):
     (Open Library serves a tiny blank GIF for missing covers)."""
     if not cover_i:
         return None
-    with _get(COVER_URL.format(cover_i), timeout) as resp:
-        data = resp.read()
+    try:
+        with _get(COVER_URL.format(cover_i), timeout) as resp:
+            data = resp.read()
+    except Exception:  # 404 (no cover) or a network hiccup
+        return None
     if len(data) < 1000:
         return None
     with open(dest_path, "wb") as fh:

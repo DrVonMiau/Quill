@@ -14,14 +14,13 @@ import time
 
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
 
-from . import analytics
 from . import csvexport
 from . import csvimport
 from . import googlebooks
 from . import library as lib
 from . import openlibrary as ol
 from .models import Book
-from .widgets import BarChart, Cover, DatePicker
+from .widgets import Cover, DatePicker
 
 # Search backends, keyed by the setting value and offered in the add dialog.
 SEARCH_BACKENDS = [
@@ -91,7 +90,6 @@ class QuillWindow(Adw.ApplicationWindow):
     tab_reading = Gtk.Template.Child()
     tab_toread = Gtk.Template.Child()
     tab_abandoned = Gtk.Template.Child()
-    tab_stats = Gtk.Template.Child()
     search_entry = Gtk.Template.Child()
     add_btn = Gtk.Template.Child()
     sort_btn = Gtk.Template.Child()
@@ -100,7 +98,6 @@ class QuillWindow(Adw.ApplicationWindow):
     content_row = Gtk.Template.Child()
     paper_stack = Gtk.Template.Child()
     book_grid = Gtk.Template.Child()
-    stats_content = Gtk.Template.Child()
 
     info_revealer = Gtk.Template.Child()
     info_panel = Gtk.Template.Child()
@@ -143,7 +140,6 @@ class QuillWindow(Adw.ApplicationWindow):
             "reading": self.tab_reading,
             "want": self.tab_toread,
             "abandoned": self.tab_abandoned,
-            "stats": self.tab_stats,
         }
         self._status_buttons = {
             "read": self.status_read_btn,
@@ -503,15 +499,20 @@ class QuillWindow(Adw.ApplicationWindow):
             return sorted(books, key=lambda b: (b.date_finished or ""), reverse=True)
         return books  # "recent" — library order is already newest-first
 
+    @staticmethod
+    def _matches_query(book, q):
+        """Library search matches a book by title, author, or any of its tags."""
+        return (q in book.title.lower()
+                or q in book.author.lower()
+                or q in (book.tags or "").lower())
+
     def _apply_filter(self):
-        if self.shelf == "stats":
-            return  # the Stats view owns the paper stack while it's active
         q = self._search_query
         visible = []
         for b in self._sorted(self._books_all):
             if b.status != self.shelf:
                 continue
-            if q and q not in b.title.lower() and q not in b.author.lower():
+            if q and not self._matches_query(b, q):
                 continue
             visible.append(b)
 
@@ -553,9 +554,6 @@ class QuillWindow(Adw.ApplicationWindow):
             else:
                 btn.remove_css_class("tab-active")
         self._close_detail()
-        if shelf == "stats":
-            self._show_stats()
-            return
         self.settings.set_string("last-shelf", shelf)
         self._apply_filter()
 
@@ -570,93 +568,6 @@ class QuillWindow(Adw.ApplicationWindow):
     def _on_search_changed(self, entry):
         self._search_query = entry.get_text().strip().lower()
         self._apply_filter()
-
-    # ---------- stats ----------
-
-    def _accent_rgba(self):
-        rgba = Gdk.RGBA()
-        rgba.parse("#50d9d5" if Adw.StyleManager.get_default().get_dark() else "#15aaa8")
-        return rgba
-
-    @staticmethod
-    def _clear_box(box):
-        child = box.get_first_child()
-        while child:
-            nxt = child.get_next_sibling()
-            box.remove(child)
-            child = nxt
-
-    @staticmethod
-    def _pages_short(value):
-        return f"{value / 1000:.1f}k" if value >= 1000 else str(value)
-
-    @staticmethod
-    def _month_label(ym):
-        try:
-            return datetime.datetime.strptime(ym, "%Y-%m").strftime("%b")
-        except ValueError:
-            return ym
-
-    def _stat_tile(self, value, caption):
-        tile = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        tile.add_css_class("stat-tile")
-        tile.append(Gtk.Label(label=value, xalign=0, css_classes=["stat-value"]))
-        tile.append(Gtk.Label(label=caption, xalign=0, css_classes=["stat-caption"]))
-        return tile
-
-    def _stat_section(self, title, chart):
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
-        box.add_css_class("chart-card")
-        box.append(Gtk.Label(label=title, xalign=0, css_classes=["section-title"]))
-        box.append(chart)
-        return box
-
-    def _show_stats(self):
-        self._clear_box(self.stats_content)
-        self.paper_stack.set_visible_child_name("stats")
-        data = analytics.compute(self.con)
-        t = data["totals"]
-
-        if t["library"] == 0:
-            self.stats_content.append(Gtk.Label(
-                label="No books yet — add or import some to see your stats.",
-                css_classes=["mono-dim"], xalign=0))
-            return
-
-        tiles = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,
-                            max_children_per_line=4, min_children_per_line=2,
-                            column_spacing=12, row_spacing=12, homogeneous=True)
-        tiles.add_css_class("stat-tiles")
-        tiles.append(self._stat_tile(str(t["read"]), "Books read"))
-        tiles.append(self._stat_tile(f'{t["pages_read"]:,}', "Pages read"))
-        tiles.append(self._stat_tile(
-            f'{t["avg_rating"]:.1f}★' if t["avg_rating"] else "—", "Average rating"))
-        tiles.append(self._stat_tile(
-            str(t["avg_pages"]) if t["avg_pages"] else "—", "Average length"))
-        self.stats_content.append(tiles)
-
-        accent = self._accent_rgba()
-        per_year = data["per_year"]
-        if per_year:
-            self.stats_content.append(self._stat_section(
-                "Books finished per year",
-                BarChart([(str(y), n) for y, n, _p in per_year], accent)))
-            self.stats_content.append(self._stat_section(
-                "Pages read per year",
-                BarChart([(str(y), p) for y, _n, p in per_year], accent,
-                         value_fmt=self._pages_short)))
-
-        per_month = data["per_month"]
-        if any(n for _ym, n, _p in per_month):
-            self.stats_content.append(self._stat_section(
-                "Books finished per month (last 12)",
-                BarChart([(self._month_label(ym), n) for ym, n, _p in per_month], accent)))
-
-        dist = data["rating_dist"]
-        if any(n for _s, n in dist):
-            self.stats_content.append(self._stat_section(
-                "Rating distribution",
-                BarChart([(f"{s}★", n) for s, n in dist], accent)))
 
     # ---------- detail panel ----------
 
@@ -922,43 +833,87 @@ class QuillWindow(Adw.ApplicationWindow):
         self._render_tags_face(row["tags"] or "")
         self.detail_tags_btn.set_popover(self._build_tags_editor(row["id"], row))
 
+    @staticmethod
+    def _clear_flow(flow):
+        child = flow.get_first_child()
+        while child:
+            nxt = child.get_next_sibling()
+            flow.remove(child)
+            child = nxt
+
     def _build_tags_editor(self, book_id, row):
+        """A multi-tag editor: current tags as removable chips, an entry to add
+        a new one (Enter), and one-tap chips for tags already used elsewhere."""
         pop = Gtk.Popover()
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10,
                       margin_top=12, margin_bottom=12, margin_start=12, margin_end=12)
-        box.set_size_request(240, -1)
+        box.set_size_request(260, -1)
 
-        entry = Gtk.Entry(text=row["tags"] or "",
-                          placeholder_text="e.g. sci-fi, favourites")
-        entry.connect("activate", lambda e: (self._apply_tags(book_id, e.get_text()),
-                                             pop.popdown()))
-        box.append(entry)
+        tags = [t.strip() for t in (row["tags"] or "").split(",") if t.strip()]
 
-        existing = [t for t in lib.all_tags(self.con)
-                    if t.lower() not in
-                    {x.strip().lower() for x in (row["tags"] or "").split(",")}]
-        if existing:
-            box.append(Gtk.Label(label="Existing tags", xalign=0,
-                                 css_classes=["mono-dim"]))
-            flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,
-                               max_children_per_line=3, column_spacing=6, row_spacing=6)
-            for tag in existing:
+        current_flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,
+                                   max_children_per_line=3, column_spacing=6, row_spacing=6)
+        entry = Gtk.Entry(placeholder_text="Add a tag, then press Enter")
+        suggest_label = Gtk.Label(label="Tags you've used", xalign=0,
+                                  css_classes=["mono-dim"])
+        suggest_flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,
+                                   max_children_per_line=3, column_spacing=6, row_spacing=6)
+
+        def add_tag(tag):
+            tag = tag.strip()
+            if not tag or tag.lower() in {t.lower() for t in tags}:
+                return
+            tags.append(tag)
+            self._apply_tags(book_id, ", ".join(tags))
+            render()
+
+        def remove_tag(tag):
+            tags[:] = [t for t in tags if t != tag]
+            self._apply_tags(book_id, ", ".join(tags))
+            render()
+
+        def render():
+            self._clear_flow(current_flow)
+            for tag in tags:
+                current_flow.append(self._removable_chip(tag, remove_tag))
+            current_flow.set_visible(bool(tags))
+
+            self._clear_flow(suggest_flow)
+            used = {t.lower() for t in tags}
+            suggestions = [t for t in lib.all_tags(self.con) if t.lower() not in used]
+            for tag in suggestions:
                 chip = Gtk.Button(label=tag, css_classes=["flat", "tag-chip"])
                 chip.set_cursor(POINTER_CURSOR)
-                chip.connect("clicked", lambda _b, t=tag: self._append_tag(entry, t))
-                flow.append(chip)
-            box.append(flow)
+                chip.connect("clicked", lambda _b, t=tag: add_tag(t))
+                suggest_flow.append(chip)
+            suggest_label.set_visible(bool(suggestions))
+            suggest_flow.set_visible(bool(suggestions))
 
-        # Save when the popover is dismissed, so typing then clicking away sticks.
-        pop.connect("closed", lambda *_: self._apply_tags(book_id, entry.get_text()))
+        def on_activate(e):
+            add_tag(e.get_text())
+            e.set_text("")
+
+        entry.connect("activate", on_activate)
+
+        box.append(current_flow)
+        box.append(entry)
+        box.append(suggest_label)
+        box.append(suggest_flow)
+        render()
         pop.set_child(box)
         return pop
 
-    def _append_tag(self, entry, tag):
-        current = [t.strip() for t in entry.get_text().split(",") if t.strip()]
-        if tag not in current:
-            current.append(tag)
-        entry.set_text(", ".join(current))
+    def _removable_chip(self, tag, on_remove):
+        chip = Gtk.Box(spacing=2, css_classes=["tag-chip", "tag-chip-active"],
+                       valign=Gtk.Align.CENTER)
+        chip.append(Gtk.Label(label=tag, valign=Gtk.Align.CENTER))
+        close = Gtk.Button(icon_name="window-close-symbolic",
+                           css_classes=["flat", "tag-remove"], valign=Gtk.Align.CENTER,
+                           tooltip_text="Remove tag")
+        close.set_cursor(POINTER_CURSOR)
+        close.connect("clicked", lambda *_: on_remove(tag))
+        chip.append(close)
+        return chip
 
     def _apply_tags(self, book_id, text):
         tags = self._normalize_tags(text)
@@ -1140,11 +1095,14 @@ class QuillWindow(Adw.ApplicationWindow):
                 if olid or isbn:
                     path = ol.download_cover_by_key(dest, olid=olid, isbn=isbn)
                 if not path and query:
-                    for res in ol.search(query)[:5]:
+                    for res in ol.search(query)[:6]:
                         if res.get("cover_i"):
                             path = ol.download_cover(res["cover_i"], dest)
-                            if path:
-                                break
+                        if not path and (res.get("olid") or res.get("isbn")):
+                            path = ol.download_cover_by_key(
+                                dest, olid=res.get("olid", ""), isbn=res.get("isbn", ""))
+                        if path:
+                            break
             except Exception:
                 path = None
             if path:

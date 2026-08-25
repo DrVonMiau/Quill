@@ -287,6 +287,29 @@ window.dark .status-btn.active {
 .date-edit:hover {
   background-color: alpha(@window_fg_color, 0.08);
 }
+/* These are GtkMenuButtons; without flattening the inner toggle it paints a
+   second hover background on top of .date-edit:hover (two overlapping
+   highlights). Keep the single highlight on the outer node only. */
+.date-edit > button,
+.date-edit > togglebutton {
+  min-height: 0;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  background-color: transparent;
+  box-shadow: none;
+  outline: none;
+  color: inherit;
+}
+.date-edit > button:hover,
+.date-edit > togglebutton:hover,
+.date-edit > button:active,
+.date-edit > togglebutton:active {
+  background: none;
+  background-color: transparent;
+  box-shadow: none;
+}
 
 /* Thin reading-progress bar under the Progress row. */
 .reading-progress,
@@ -486,6 +509,28 @@ window.dark .dp-day.in-range:hover {
 window.dark .tag-chip {
   color: @quill_teal_light;
   background-color: alpha(@quill_teal_light, 0.18);
+}
+/* Applied (removable) chip: label + a small ✕ button. */
+.tag-chip-active {
+  padding: 1px 3px 1px 10px;
+}
+.tag-remove {
+  min-width: 18px;
+  min-height: 18px;
+  padding: 0;
+  border-radius: 9999px;
+  color: @quill_teal;
+  background: none;
+  box-shadow: none;
+}
+.tag-remove:hover {
+  background-color: alpha(@quill_teal, 0.22);
+}
+window.dark .tag-remove {
+  color: @quill_teal_light;
+}
+window.dark .tag-remove:hover {
+  background-color: alpha(@quill_teal_light, 0.28);
 }
 
 /* ---------- add-book dialog ---------- */

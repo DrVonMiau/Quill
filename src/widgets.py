@@ -8,7 +8,7 @@ import calendar
 import datetime
 import math
 
-from gi.repository import Gdk, Graphene, Gsk, Gtk, Pango
+from gi.repository import Gdk, GLib, Graphene, Gsk, Gtk, Pango
 
 STRIPE_STEP = 7
 STRIPE_WIDTH = 2.4
@@ -108,9 +108,18 @@ class Cover(Gtk.Widget):
 
     def set_path(self, path):
         has_path = bool(path)
-        self._picture.set_visible(has_path)
         if has_path:
-            self._picture.set_filename(path)
+            # Load a fresh texture from the file's bytes rather than set_filename:
+            # GtkPicture short-circuits when handed an equal GFile, so a cover
+            # re-downloaded to the same path (e.g. "Find Cover Online") would
+            # otherwise keep showing the stale image.
+            try:
+                self._picture.set_paintable(Gdk.Texture.new_from_filename(path))
+            except GLib.Error:
+                has_path = False
+        else:
+            self._picture.set_paintable(None)
+        self._picture.set_visible(has_path)
         self._area.set_visible(not has_path)
         self._label.set_visible(not has_path and bool(self._placeholder_text))
         self.queue_allocate()

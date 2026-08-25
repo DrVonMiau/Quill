@@ -194,24 +194,6 @@
                                     </style>
                                   </object>
                                 </child>
-                                <child>
-                                  <object class="GtkLabel">
-                                    <property name="label">|</property>
-                                    <property name="valign">center</property>
-                                    <style>
-                                      <class name="tab-sep"/>
-                                    </style>
-                                  </object>
-                                </child>
-                                <child>
-                                  <object class="GtkButton" id="tab_stats">
-                                    <property name="label" translatable="yes">Stats</property>
-                                    <style>
-                                      <class name="flat"/>
-                                      <class name="tab-btn"/>
-                                    </style>
-                                  </object>
-                                </child>
                               </object>
                             </child>
                           </object>
@@ -223,7 +205,7 @@
                         <property name="name">search</property>
                         <property name="child">
                           <object class="GtkSearchEntry" id="search_entry">
-                            <property name="placeholder-text" translatable="yes">Search your library</property>
+                            <property name="placeholder-text" translatable="yes">Search title, author or tag</property>
                             <property name="hexpand">true</property>
                             <property name="valign">center</property>
                             <style>
@@ -317,28 +299,6 @@
                                     <style>
                                       <class name="empty-cta"/>
                                     </style>
-                                  </object>
-                                </property>
-                              </object>
-                            </property>
-                          </object>
-                        </child>
-
-                        <child>
-                          <object class="GtkStackPage">
-                            <property name="name">stats</property>
-                            <property name="child">
-                              <object class="GtkScrolledWindow">
-                                <property name="hscrollbar-policy">never</property>
-                                <property name="child">
-                                  <object class="GtkBox" id="stats_content">
-                                    <property name="orientation">vertical</property>
-                                    <property name="spacing">18</property>
-                                    <property name="margin-top">24</property>
-                                    <property name="margin-bottom">24</property>
-                                    <property name="margin-start">28</property>
-                                    <property name="margin-end">28</property>
-                                    <property name="valign">start</property>
                                   </object>
                                 </property>
                               </object>
