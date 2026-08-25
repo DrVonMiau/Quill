@@ -3,3 +3,4 @@ _flatpak/
 .flatpak-builder/
 __pycache__/
 *.pyc
+HANDOVER.md
