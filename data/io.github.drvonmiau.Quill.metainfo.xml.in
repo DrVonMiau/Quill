@@ -16,11 +16,13 @@
 	  </p>
 	  <p>Features:</p>
 	  <ul>
-	    <li>Want to read / Reading / Read shelves</li>
-	    <li>Add books by searching Open Library, with cover art</li>
-	    <li>Star ratings and per-book notes</li>
-	    <li>Search your library by title or author</li>
-	    <li>Light and dark themes</li>
+	    <li>Read / Reading / To read / Abandoned shelves with a master–detail layout</li>
+	    <li>Add books by searching Open Library or Google Books, or add them manually</li>
+	    <li>Automatic cover art and summaries, with a manual "find cover online" option</li>
+	    <li>Reading dates on a calendar that highlights the started→finished span, plus reading progress</li>
+	    <li>Star ratings, per-book tags, and title/author/tag search</li>
+	    <li>Import from an Openreads CSV export and export your library back to CSV</li>
+	    <li>Light and dark themes that follow the system</li>
 	  </ul>
 	</description>
 	<launchable type="desktop-id">io.github.drvonmiau.Quill.desktop</launchable>
@@ -40,6 +42,19 @@
 		<control>pointing</control>
 	</supports>
 	<releases>
+		<release version="0.2.0" date="2026-08-25">
+			<description>
+				<p>A big feature release.</p>
+				<ul>
+					<li>Master–detail layout with a floating info panel and an Abandoned shelf.</li>
+					<li>Reading dates are captured automatically when you move a book to Reading or Read, editable on a calendar that highlights the whole reading span.</li>
+					<li>Reading progress (current page) with a progress bar.</li>
+					<li>Google Books as an alternative search backend, plus a manual add-book form.</li>
+					<li>Per-book tags with a multi-tag editor; search now matches tags too.</li>
+					<li>Import from an Openreads CSV and export your library to CSV.</li>
+				</ul>
+			</description>
+		</release>
 		<release version="0.1.0" date="2026-08-10">
 			<description>
 				<p>Initial release.</p>
