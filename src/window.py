@@ -3,7 +3,7 @@
 Shares Lyre/Easel's chrome — a custom titlebar with the window controls, a
 cover-size slider and the menu; a navigation band of shelf tabs on the grey
 desktop; and a rounded "paper" card that holds the library grid. Selecting a
-cover reveals a floating 300px info panel (cover, a three-way status control, a
+cover reveals a floating 350px info panel (cover, a three-way status control, a
 star rating, metadata and an Open Library summary).
 """
 import datetime
@@ -69,11 +69,11 @@ THEME_SCHEMES = {
 POINTER_CURSOR = Gdk.Cursor.new_from_name("pointer")
 
 SPACE_L = 24
-INFO_WIDTH = 300          # the info panel's content column
-SCROLLBAR_GUTTER = 16     # reserved to the panel's right so the vertical
+INFO_WIDTH = 350          # the info panel's content column
+SCROLLBAR_GUTTER = 18     # reserved to the panel's right so the vertical
                           # scrollbar sits beside the content, never over it
 PANEL_WIDTH = INFO_WIDTH + SCROLLBAR_GUTTER  # the floating panel's full width
-DETAIL_COVER_W = 280      # cover width inside the info panel
+DETAIL_COVER_W = 300      # cover width inside the info panel
 
 
 @Gtk.Template(resource_path="/io/github/drvonmiau/Quill/window.ui")
@@ -308,7 +308,7 @@ class QuillWindow(Adw.ApplicationWindow):
 
     def _apply_layout_metrics(self):
         """5% top/left/right margins with the paper + info block centered; the
-        info panel is a fixed 300px floating panel to the paper's right."""
+        info panel is a fixed 350px floating panel to the paper's right."""
         width, height = self._surface_width, self._surface_height
         if width <= 0 or height <= 0:
             return
