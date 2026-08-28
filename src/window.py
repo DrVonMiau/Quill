@@ -782,10 +782,18 @@ class QuillWindow(Adw.ApplicationWindow):
     def _render_progress_face(self, row):
         pages = row["pages"] or 0
         current = row["current_page"] or 0
+        done = row["status"] == "read"
         if pages > 0:
-            current = min(current, pages)
+            # A finished book always reads as 100%, even if its stored page was
+            # never advanced (e.g. imported without progress).
+            current = pages if done else min(current, pages)
             label = f"{current} / {pages}"
             self.detail_progress_bar.set_fraction(current / pages)
+            self.detail_progress_bar.set_visible(True)
+        elif done:
+            # Finished, but no page count to show a "x / y" against.
+            label = "Finished"
+            self.detail_progress_bar.set_fraction(1.0)
             self.detail_progress_bar.set_visible(True)
         elif current > 0:
             label = f"page {current}"
