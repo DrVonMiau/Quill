@@ -1,4 +1,5 @@
 """Application entry point for Quill."""
+import os
 import sys
 
 import gi
@@ -35,6 +36,17 @@ class QuillApp(Adw.Application):
         Gtk.StyleContext.add_provider_for_display(
             Gdk.Display.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
         )
+        icon_theme = Gtk.IconTheme.get_for_display(Gdk.Display.get_default())
+        icon_theme.add_resource_path("/io/github/drvonmiau/Quill/icons")
+        # Inside the Flatpak sandbox the host's icon themes aren't visible, so
+        # symbolic lookups (e.g. the window controls) fall back to Adwaita.
+        # With host-os access granted, searching the host's icon dirs lets the
+        # user's actual system theme resolve — matching Easel and Lyre.
+        for path in ("/run/host/usr/share/icons", "/run/host/share/icons",
+                     os.path.expanduser("~/.local/share/icons"),
+                     os.path.expanduser("~/.icons")):
+            if os.path.isdir(path):
+                icon_theme.add_search_path(path)
 
     def do_activate(self):
         if self.window is None:
