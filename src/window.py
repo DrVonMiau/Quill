@@ -313,7 +313,6 @@ class QuillWindow(Adw.ApplicationWindow):
         width, height = self._surface_width, self._surface_height
         if width <= 0 or height <= 0:
             return
-        margin_y = round(height * 0.05)
         margin_x = max(SPACE_L, round(width * 0.05))
         revealed = self.info_revealer.get_reveal_child()
         if revealed:
@@ -321,20 +320,23 @@ class QuillWindow(Adw.ApplicationWindow):
             ideal_paper = round(width * 0.60)
             centered = (width - ideal_paper - gap - PANEL_WIDTH) // 2
             margin_x = max(margin_x, centered)
+            # Pull the panel (and its scrollbar) nearer the window's right edge.
+            right_margin = max(SPACE_L, margin_x // 2)
         else:
             gap = 0
+            right_margin = margin_x
         # The paper is flush to the window bottom (rounded top corners only);
         # the nav band supplies its top gap, so content_row has no vertical
-        # margins. The info panel floats on the grey with a bottom margin.
+        # margins. The info panel runs to the window's bottom edge too.
         self.content_row.set_margin_start(margin_x)
-        self.content_row.set_margin_end(margin_x)
+        self.content_row.set_margin_end(right_margin)
         self.content_row.set_margin_top(0)
         self.content_row.set_margin_bottom(0)
         self.nav_row.set_margin_start(margin_x)
-        self.nav_row.set_margin_end(margin_x + (gap + PANEL_WIDTH if revealed else 0))
+        self.nav_row.set_margin_end(right_margin + (gap + PANEL_WIDTH if revealed else 0))
         self.info_panel.set_size_request(PANEL_WIDTH if revealed else 0, -1)
         self.info_revealer.set_margin_start(gap)
-        self.info_revealer.set_margin_bottom(margin_y)
+        self.info_revealer.set_margin_bottom(0)
 
     # ---------- theme + window state ----------
 
@@ -700,12 +702,12 @@ class QuillWindow(Adw.ApplicationWindow):
 
     @staticmethod
     def _value_label(text):
-        """A right-aligned detail value that wraps onto extra lines instead of
-        being cut off, so long dates/tags stay fully readable in the 300px
-        panel."""
+        """A right-aligned detail value that stays on one line while it fits and
+        only wraps when it genuinely can't (rather than at a fixed char count),
+        so long dates/tags stay readable without breaking early."""
         return Gtk.Label(label=text, xalign=1, wrap=True,
                          wrap_mode=Pango.WrapMode.WORD_CHAR,
-                         justify=Gtk.Justification.RIGHT, max_width_chars=22,
+                         justify=Gtk.Justification.RIGHT,
                          css_classes=["detail-val"])
 
     def _refresh_date_button(self, row):
