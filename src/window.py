@@ -3,7 +3,7 @@
 Shares Lyre/Easel's chrome — a custom titlebar with the window controls, a
 cover-size slider and the menu; a navigation band of shelf tabs on the grey
 desktop; and a rounded "paper" card that holds the library grid. Selecting a
-cover reveals a floating 320px info panel (cover, a three-way status control, a
+cover reveals a floating 300px info panel (cover, a three-way status control, a
 star rating, metadata and an Open Library summary).
 """
 import datetime
@@ -69,12 +69,11 @@ THEME_SCHEMES = {
 POINTER_CURSOR = Gdk.Cursor.new_from_name("pointer")
 
 SPACE_L = 24
-INFO_WIDTH = 320          # the info panel's content column
-SCROLLBAR_GUTTER = 18     # reserved to the panel's right so the scrollbar sits
-                          # beside the content, never over it (wide enough that
-                          # the content column is never clipped)
+INFO_WIDTH = 300          # the info panel's content column
+SCROLLBAR_GUTTER = 16     # reserved to the panel's right so the vertical
+                          # scrollbar sits beside the content, never over it
 PANEL_WIDTH = INFO_WIDTH + SCROLLBAR_GUTTER  # the floating panel's full width
-DETAIL_COVER_W = 300      # cover width inside the info panel
+DETAIL_COVER_W = 280      # cover width inside the info panel
 
 
 @Gtk.Template(resource_path="/io/github/drvonmiau/Quill/window.ui")
@@ -309,7 +308,7 @@ class QuillWindow(Adw.ApplicationWindow):
 
     def _apply_layout_metrics(self):
         """5% top/left/right margins with the paper + info block centered; the
-        info panel is a fixed 320px floating panel to the paper's right."""
+        info panel is a fixed 300px floating panel to the paper's right."""
         width, height = self._surface_width, self._surface_height
         if width <= 0 or height <= 0:
             return
@@ -698,9 +697,18 @@ class QuillWindow(Adw.ApplicationWindow):
 
     # ---------- reading dates (editable) ----------
 
+    @staticmethod
+    def _value_label(text):
+        """A right-aligned detail value that wraps onto extra lines instead of
+        being cut off, so long dates/tags stay fully readable in the 300px
+        panel."""
+        return Gtk.Label(label=text, xalign=1, wrap=True,
+                         wrap_mode=Pango.WrapMode.WORD_CHAR,
+                         justify=Gtk.Justification.RIGHT, max_width_chars=22,
+                         css_classes=["detail-val"])
+
     def _refresh_date_button(self, row):
-        label = Gtk.Label(label=self._format_dates(row), xalign=1,
-                          ellipsize=Pango.EllipsizeMode.END, css_classes=["detail-val"])
+        label = self._value_label(self._format_dates(row))
         self.detail_date_btn.set_child(label)
         self.detail_date_btn.set_popover(self._build_date_editor(row["id"], row))
 
@@ -763,10 +771,7 @@ class QuillWindow(Adw.ApplicationWindow):
         if self._detail_book_id == book_id:
             row = lib.get_book(self.con, book_id)
             if row:
-                label = Gtk.Label(label=self._format_dates(row), xalign=1,
-                                  ellipsize=Pango.EllipsizeMode.END,
-                                  css_classes=["detail-val"])
-                self.detail_date_btn.set_child(label)
+                self.detail_date_btn.set_child(self._value_label(self._format_dates(row)))
         self._reload_grid()
 
     # ---------- reading progress (current page) ----------
@@ -835,9 +840,7 @@ class QuillWindow(Adw.ApplicationWindow):
         return ", ".join(t.strip() for t in (text or "").split(",") if t.strip())
 
     def _render_tags_face(self, tags):
-        self.detail_tags_btn.set_child(Gtk.Label(
-            label=tags or "Add tags…", xalign=1, ellipsize=Pango.EllipsizeMode.END,
-            css_classes=["detail-val"]))
+        self.detail_tags_btn.set_child(self._value_label(tags or "Add tags…"))
 
     def _refresh_tags(self, row):
         self._render_tags_face(row["tags"] or "")
