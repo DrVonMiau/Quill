@@ -231,13 +231,12 @@ window.dark gridview.card-grid > child:selected .card-title {
   background: none;
 }
 
-/* The info panel's scrollbar lives in a reserved gutter to the RIGHT of the
-   300px content column (overlay-scrolling is off), so it never sits over the
-   details. Slim and quiet, it reads as part of the grey desktop. */
+/* The info panel's scrollbar floats over the panel's right-edge padding (the
+   content is inset by a matching margin), so it never sits over the detail
+   values. Slim and quiet, it reads as part of the grey desktop. */
 .info-panel > scrollbar {
   background: none;
   border: none;
-  margin-left: 4px;
 }
 .info-panel > scrollbar trough {
   background: none;
@@ -247,10 +246,10 @@ window.dark gridview.card-grid > child:selected .card-title {
 .info-panel > scrollbar slider {
   min-width: 6px;
   border-radius: 9999px;
-  background-color: alpha(@window_fg_color, 0.22);
+  background-color: alpha(@window_fg_color, 0.28);
 }
 .info-panel > scrollbar slider:hover {
-  background-color: alpha(@window_fg_color, 0.40);
+  background-color: alpha(@window_fg_color, 0.45);
 }
 .info-panel > scrollbar slider:active {
   background-color: @quill_teal;

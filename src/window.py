@@ -69,10 +69,11 @@ THEME_SCHEMES = {
 POINTER_CURSOR = Gdk.Cursor.new_from_name("pointer")
 
 SPACE_L = 24
-INFO_WIDTH = 350          # the info panel's content column
-SCROLLBAR_GUTTER = 18     # reserved to the panel's right so the vertical
-                          # scrollbar sits beside the content, never over it
-PANEL_WIDTH = INFO_WIDTH + SCROLLBAR_GUTTER  # the floating panel's full width
+INFO_WIDTH = 350          # the floating info panel's full width
+# The panel's content is inset from the right by this much (info-panel box
+# margin-end in the .ui) so the overlay scrollbar floats over padding, never
+# over the right-aligned detail values.
+PANEL_WIDTH = INFO_WIDTH
 DETAIL_COVER_W = 300      # cover width inside the info panel
 
 
