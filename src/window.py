@@ -16,6 +16,7 @@ from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
 
 from . import csvexport
 from . import csvimport
+from . import enrich
 from . import googlebooks
 from . import library as lib
 from . import openlibrary as ol
@@ -68,8 +69,11 @@ THEME_SCHEMES = {
 POINTER_CURSOR = Gdk.Cursor.new_from_name("pointer")
 
 SPACE_L = 24
-INFO_WIDTH = 300          # the floating info panel
-DETAIL_COVER_W = 280      # cover width inside the 300px info panel
+INFO_WIDTH = 300          # the info panel's content column
+SCROLLBAR_GUTTER = 14     # reserved to the panel's right so the scrollbar sits
+                          # beside the content, never over it
+PANEL_WIDTH = INFO_WIDTH + SCROLLBAR_GUTTER  # the floating panel's full width
+DETAIL_COVER_W = 280      # cover width inside the info panel
 
 
 @Gtk.Template(resource_path="/io/github/drvonmiau/Quill/window.ui")
@@ -195,6 +199,10 @@ class QuillWindow(Adw.ApplicationWindow):
         exp.connect("activate", lambda *_a: self._open_export_dialog())
         self.add_action(exp)
 
+        missing = Gio.SimpleAction.new("find-missing-covers", None)
+        missing.connect("activate", lambda *_a: self._find_missing_covers())
+        self.add_action(missing)
+
         find = Gio.SimpleAction.new("find", None)
         find.connect("activate", lambda *_a: self.search_toggle_btn.set_active(
             not self.search_toggle_btn.get_active()))
@@ -212,6 +220,7 @@ class QuillWindow(Adw.ApplicationWindow):
         self.add_action(status_act)
         for name, cb in (("book-cover", self._act_book_cover),
                          ("book-find-cover", self._act_book_find_cover),
+                         ("book-link", self._act_book_link),
                          ("book-abandon", self._act_book_abandon),
                          ("book-remove", self._act_book_remove)):
             act = Gio.SimpleAction.new(name, GLib.VariantType.new("x"))
@@ -309,7 +318,7 @@ class QuillWindow(Adw.ApplicationWindow):
         if revealed:
             gap = round(width * 0.05)
             ideal_paper = round(width * 0.60)
-            centered = (width - ideal_paper - gap - INFO_WIDTH) // 2
+            centered = (width - ideal_paper - gap - PANEL_WIDTH) // 2
             margin_x = max(margin_x, centered)
         else:
             gap = 0
@@ -321,8 +330,8 @@ class QuillWindow(Adw.ApplicationWindow):
         self.content_row.set_margin_top(0)
         self.content_row.set_margin_bottom(0)
         self.nav_row.set_margin_start(margin_x)
-        self.nav_row.set_margin_end(margin_x + (gap + INFO_WIDTH if revealed else 0))
-        self.info_panel.set_size_request(INFO_WIDTH if revealed else 0, -1)
+        self.nav_row.set_margin_end(margin_x + (gap + PANEL_WIDTH if revealed else 0))
+        self.info_panel.set_size_request(PANEL_WIDTH if revealed else 0, -1)
         self.info_revealer.set_margin_start(gap)
         self.info_revealer.set_margin_bottom(margin_y)
 
@@ -1009,6 +1018,322 @@ class QuillWindow(Adw.ApplicationWindow):
             self._detail_cover.set_path(str(dest))
         self._toast("Cover updated")
 
+    def _update_detail_cover(self, book_id, path):
+        """Reflect a freshly set cover in the open detail panel, if it's showing
+        this book."""
+        if self._detail_book_id == book_id and self._detail_cover is not None:
+            self._detail_cover.set_placeholder("")
+            self._detail_cover.set_path(path)
+
+    # ---------- find cover online (preview modal) ----------
+
+    _COVER_PREVIEW_W = 116     # candidate cover tile width in the picker
+    _COVER_PREVIEW_MAX = 5     # number of options shown
+
+    def _open_cover_search(self, book_id):
+        """A modal that previews up to five candidate covers found online and
+        lets the user pick the one that fits, rather than auto-taking the first."""
+        row = lib.get_book(self.con, book_id)
+        if not row:
+            return
+        dialog = Adw.Dialog()
+        dialog.set_title("Choose a Cover")
+        dialog.set_content_width(600)
+        dialog.set_content_height(480)
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12,
+                      margin_top=16, margin_bottom=16, margin_start=16, margin_end=16)
+        entry = Gtk.SearchEntry(placeholder_text="Search covers by title or author")
+        entry.add_css_class("search-entry")
+        entry.set_text(f'{row["title"]} {row["author"] or ""}'.strip())
+        status_lbl = Gtk.Label(label="Searching for covers…", xalign=0,
+                               css_classes=["mono-dim"])
+        flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE,
+                           max_children_per_line=self._COVER_PREVIEW_MAX,
+                           min_children_per_line=2, homogeneous=True,
+                           column_spacing=12, row_spacing=12, valign=Gtk.Align.START)
+        scroller = Gtk.ScrolledWindow(vexpand=True,
+                                      hscrollbar_policy=Gtk.PolicyType.NEVER)
+        scroller.set_child(flow)
+        box.append(entry)
+        box.append(status_lbl)
+        box.append(scroller)
+        self._dialog_body(dialog, box)
+
+        state = {"timer": 0, "token": 0,
+                 "olid": row["olid"] or "", "isbn": row["isbn"] or ""}
+
+        def run_search():
+            state["timer"] = 0
+            query = entry.get_text().strip()
+            self._clear_flow(flow)
+            if not query:
+                status_lbl.set_label("Type a title or author to search for covers.")
+                return False
+            status_lbl.set_label("Searching for covers…")
+            state["token"] += 1
+            token = state["token"]
+
+            def work():
+                candidates = self._gather_cover_candidates(
+                    query, state["olid"], state["isbn"])
+                preview_dir = lib.CACHE_DIR / "cover_search"
+                preview_dir.mkdir(parents=True, exist_ok=True)
+                found = []
+                for kind, value in candidates:
+                    if len(found) >= self._COVER_PREVIEW_MAX:
+                        break
+                    dest = preview_dir / f"{token}_{len(found)}.jpg"
+                    path = None
+                    try:
+                        if kind == "key":
+                            path = ol.download_cover_by_key(
+                                dest, olid=value[0], isbn=value[1])
+                        elif kind == "id":
+                            path = ol.download_cover(value, dest)
+                        else:
+                            path = googlebooks.download_cover_url(value, dest)
+                    except Exception:
+                        path = None
+                    if path:
+                        found.append(path)
+                GLib.idle_add(deliver, token, found)
+
+            threading.Thread(target=work, daemon=True).start()
+            return False
+
+        def deliver(token, found):
+            if token != state["token"]:
+                return False
+            self._clear_flow(flow)
+            if not found:
+                status_lbl.set_label("No covers found online.")
+                return False
+            status_lbl.set_label(
+                f"{len(found)} option{'' if len(found) == 1 else 's'} — pick one")
+            for path in found:
+                flow.append(self._cover_option(book_id, path, dialog))
+            return False
+
+        def on_changed(_e):
+            if state["timer"]:
+                GLib.source_remove(state["timer"])
+            state["timer"] = GLib.timeout_add(400, run_search)
+
+        entry.connect("search-changed", on_changed)
+        dialog.present(self)
+        run_search()
+
+    def _cover_option(self, book_id, path, dialog):
+        btn = Gtk.Button(css_classes=["flat", "cover-option"])
+        btn.set_cursor(POINTER_CURSOR)
+        cover = Cover("", width=self._COVER_PREVIEW_W)
+        cover.set_path(path)
+        btn.set_child(cover)
+        btn.connect("clicked", lambda *_: self._choose_cover(book_id, path, dialog))
+        return btn
+
+    def _choose_cover(self, book_id, preview_path, dialog):
+        dest = lib.COVERS_DIR / f"{book_id}.jpg"
+        try:
+            if os.path.abspath(preview_path) != os.path.abspath(dest):
+                shutil.copyfile(preview_path, dest)
+        except OSError:
+            self._toast("Couldn't set that cover.")
+            return
+        lib.set_cover(self.con, book_id, str(dest))
+        self._reload_grid()
+        self._update_detail_cover(book_id, str(dest))
+        self._toast("Cover updated")
+        dialog.close()
+
+    def _gather_cover_candidates(self, query, olid, isbn):
+        """Collect candidate covers from Open Library and Google Books, most
+        relevant first and de-duplicated. Each entry is a ("kind", value) pair:
+        "key" (the book's own OLID/ISBN), "id" (an OL cover id), or "url" (a
+        direct image URL). Runs on a worker thread; never raises."""
+        candidates, seen = [], set()
+
+        def add(kind, value):
+            key = (kind, value)
+            if value and key not in seen:
+                seen.add(key)
+                candidates.append(key)
+
+        # The book's own identifier usually yields its exact edition's cover.
+        if olid or isbn:
+            add("key", (olid, isbn))
+        try:
+            for res in ol.search(query)[:8]:
+                if res.get("cover_i"):
+                    add("id", res["cover_i"])
+        except Exception:
+            pass
+        try:
+            for res in googlebooks.search(query)[:8]:
+                if res.get("cover_url"):
+                    add("url", res["cover_url"])
+        except Exception:
+            pass
+        return candidates
+
+    # ---------- look for missing covers (bulk) ----------
+
+    def _find_missing_covers(self):
+        targets = [(r["id"], r["olid"] or "", r["isbn"] or "",
+                    f'{r["title"]} {r["author"] or ""}'.strip())
+                   for r in lib.books_without_cover(self.con)]
+        if not targets:
+            self._toast("Every book already has a cover.")
+            return
+        self._toast(
+            f"Looking for {len(targets)} missing "
+            f"cover{'' if len(targets) == 1 else 's'}…")
+
+        def work():
+            found = 0
+            for book_id, olid, isbn, query in targets:
+                dest = lib.COVERS_DIR / f"{book_id}.jpg"
+                path = None
+                try:
+                    if olid or isbn:
+                        path = ol.download_cover_by_key(dest, olid=olid, isbn=isbn)
+                    if not path and query:
+                        for res in ol.search(query)[:5]:
+                            if res.get("cover_i"):
+                                path = ol.download_cover(res["cover_i"], dest)
+                            if not path and (res.get("olid") or res.get("isbn")):
+                                path = ol.download_cover_by_key(
+                                    dest, olid=res.get("olid", ""),
+                                    isbn=res.get("isbn", ""))
+                            if path:
+                                break
+                except Exception:
+                    path = None
+                if path:
+                    found += 1
+                    GLib.idle_add(self._cover_ready, book_id, path)
+                time.sleep(0.2)
+            GLib.idle_add(
+                self._toast,
+                f"Found {found} cover{'' if found == 1 else 's'}" if found
+                else "No new covers found online")
+
+        threading.Thread(target=work, daemon=True).start()
+
+    # ---------- link to fetch details (per book) ----------
+
+    def _open_link_dialog(self, book_id):
+        row = lib.get_book(self.con, book_id)
+        if not row:
+            return
+        dialog = Adw.Dialog()
+        dialog.set_title("Link to Fetch Details")
+        dialog.set_content_width(460)
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16,
+                      margin_top=16, margin_bottom=16, margin_start=16, margin_end=16)
+        group = Adw.PreferencesGroup(
+            description=("Paste a Google Books link, an ISBN, or a Goodreads link "
+                         "to fill in this book's missing details and cover."))
+        link_row = Adw.EntryRow(title="Link or ISBN")
+        group.add(link_row)
+        box.append(group)
+
+        status_lbl = Gtk.Label(xalign=0, wrap=True, css_classes=["mono-dim"],
+                               label=f'Filling in gaps for “{row["title"]}”.')
+        box.append(status_lbl)
+
+        fetch_btn = Gtk.Button(label="Fetch Details", halign=Gtk.Align.CENTER,
+                               sensitive=False, css_classes=["empty-cta"])
+        fetch_btn.set_cursor(POINTER_CURSOR)
+        box.append(fetch_btn)
+        self._dialog_body(dialog, box)
+
+        def run():
+            text = link_row.get_text().strip()
+            if not text:
+                return
+            fetch_btn.set_sensitive(False)
+            status_lbl.set_label("Fetching…")
+
+            def work():
+                try:
+                    data = enrich.fetch(text)
+                except Exception:
+                    data = None
+                GLib.idle_add(done, data)
+
+            threading.Thread(target=work, daemon=True).start()
+
+        def done(data):
+            if not enrich.has_data(data):
+                status_lbl.set_label(
+                    "Couldn't find any details for that link. "
+                    "Check it and try again.")
+                fetch_btn.set_sensitive(True)
+                return False
+            updated = self._apply_link_data(book_id, data)
+            if updated:
+                self._toast("Updated " + ", ".join(updated))
+            else:
+                self._toast("Nothing was missing — no changes made.")
+            dialog.close()
+            return False
+
+        link_row.connect("changed",
+                         lambda r: fetch_btn.set_sensitive(bool(r.get_text().strip())))
+        link_row.connect("entry-activated", lambda *_: run())
+        fetch_btn.connect("clicked", lambda *_: run())
+        dialog.present(self)
+        link_row.grab_focus()
+
+    def _apply_link_data(self, book_id, data):
+        """Fill in only the fields this book is currently missing from a fetched
+        metadata dict. Returns a list of human labels for what changed."""
+        row = lib.get_book(self.con, book_id)
+        if not row:
+            return []
+        updated, fields = [], {}
+
+        def blank(col):
+            value = row[col]
+            return not (str(value).strip() if value is not None else "")
+
+        if blank("author") and data.get("author"):
+            fields["author"] = data["author"]
+            updated.append("author")
+        if not row["year"] and data.get("year"):
+            fields["year"] = int(data["year"])
+            updated.append("year")
+        if not row["pages"] and data.get("pages"):
+            fields["pages"] = int(data["pages"])
+            updated.append("pages")
+        if blank("isbn") and data.get("isbn"):
+            fields["isbn"] = data["isbn"]
+            updated.append("ISBN")
+        if blank("olid") and data.get("olid"):
+            fields["olid"] = data["olid"]
+            updated.append("catalogue id")
+        if blank("description") and data.get("description"):
+            fields["description"] = data["description"]
+            updated.append("summary")
+        if fields:
+            lib.update_fields(self.con, book_id, **fields)
+
+        if blank("cover_path"):
+            if data.get("cover_i"):
+                self._fetch_cover_async(book_id, data["cover_i"])
+                updated.append("cover")
+            elif data.get("cover_url"):
+                self._fetch_cover_url_async(book_id, data["cover_url"])
+                updated.append("cover")
+
+        self._reload_grid()
+        if self._detail_book_id == book_id:
+            self._open_book(book_id)  # rebuild the panel with the new details
+        return updated
+
     # ---------- status / rating / abandon ----------
 
     def _on_status_clicked(self, _btn, status):
@@ -1048,12 +1373,15 @@ class QuillWindow(Adw.ApplicationWindow):
             menu.append_section(None, shelves)
 
         mid = Gio.Menu()
-        find_item = Gio.MenuItem.new("Find Cover Online", None)
+        find_item = Gio.MenuItem.new("Find Cover Online…", None)
         find_item.set_action_and_target_value("win.book-find-cover", GLib.Variant("x", book_id))
         mid.append_item(find_item)
         cover_item = Gio.MenuItem.new("Change Cover…", None)
         cover_item.set_action_and_target_value("win.book-cover", GLib.Variant("x", book_id))
         mid.append_item(cover_item)
+        link_item = Gio.MenuItem.new("Link to Fetch Details…", None)
+        link_item.set_action_and_target_value("win.book-link", GLib.Variant("x", book_id))
+        mid.append_item(link_item)
         if status != "abandoned":
             ab = Gio.MenuItem.new("Mark as Abandoned", None)
             ab.set_action_and_target_value("win.book-abandon", GLib.Variant("x", book_id))
@@ -1078,40 +1406,10 @@ class QuillWindow(Adw.ApplicationWindow):
         self._open_cover_picker(param.unpack())
 
     def _act_book_find_cover(self, _action, param):
-        self._find_cover_online(param.unpack())
+        self._open_cover_search(param.unpack())
 
-    def _find_cover_online(self, book_id):
-        row = lib.get_book(self.con, book_id)
-        if not row:
-            return
-        olid, isbn = row["olid"] or "", row["isbn"] or ""
-        query = f'{row["title"]} {row["author"] or ""}'.strip()
-        self._toast("Searching for a cover…")
-
-        def work():
-            dest = lib.COVERS_DIR / f"{book_id}.jpg"
-            path = None
-            try:
-                if olid or isbn:
-                    path = ol.download_cover_by_key(dest, olid=olid, isbn=isbn)
-                if not path and query:
-                    for res in ol.search(query)[:6]:
-                        if res.get("cover_i"):
-                            path = ol.download_cover(res["cover_i"], dest)
-                        if not path and (res.get("olid") or res.get("isbn")):
-                            path = ol.download_cover_by_key(
-                                dest, olid=res.get("olid", ""), isbn=res.get("isbn", ""))
-                        if path:
-                            break
-            except Exception:
-                path = None
-            if path:
-                GLib.idle_add(self._cover_ready, book_id, path)
-                GLib.idle_add(self._toast, "Cover updated")
-            else:
-                GLib.idle_add(self._toast, "No cover found online")
-
-        threading.Thread(target=work, daemon=True).start()
+    def _act_book_link(self, _action, param):
+        self._open_link_dialog(param.unpack())
 
     def _act_book_remove(self, _action, param):
         self._confirm_delete(param.unpack())
@@ -1170,6 +1468,12 @@ class QuillWindow(Adw.ApplicationWindow):
         lib.set_status(self.con, book_id, status)
         if set_field is not None:
             lib.set_book_date(self.con, book_id, set_field, set_value)
+        if status == "read":
+            # A finished book is 100% read: snap progress to its last page so the
+            # progress bar and "current / pages" reflect completion.
+            row = lib.get_book(self.con, book_id)
+            if row and row["pages"] and (row["current_page"] or 0) < row["pages"]:
+                lib.set_progress(self.con, book_id, row["pages"])
         self._resync_detail(book_id)
         self._reload_grid()
         self._toast(f"Moved to {SHELF_LABELS.get(status, status)}")

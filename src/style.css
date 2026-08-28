@@ -231,6 +231,49 @@ window.dark gridview.card-grid > child:selected .card-title {
   background: none;
 }
 
+/* The info panel's scrollbar lives in a reserved gutter to the RIGHT of the
+   300px content column (overlay-scrolling is off), so it never sits over the
+   details. Slim and quiet, it reads as part of the grey desktop. */
+.info-panel > scrollbar {
+  background: none;
+  border: none;
+  margin-left: 4px;
+}
+.info-panel > scrollbar trough {
+  background: none;
+  border: none;
+  min-width: 8px;
+}
+.info-panel > scrollbar slider {
+  min-width: 6px;
+  border-radius: 9999px;
+  background-color: alpha(@window_fg_color, 0.22);
+}
+.info-panel > scrollbar slider:hover {
+  background-color: alpha(@window_fg_color, 0.40);
+}
+.info-panel > scrollbar slider:active {
+  background-color: @quill_teal;
+}
+window.dark .info-panel > scrollbar slider:active {
+  background-color: @quill_teal_light;
+}
+
+/* Candidate covers in the "Find Cover Online" picker: a plain framed tile that
+   lifts on hover, mirroring the library grid's cover hover. */
+.cover-option {
+  padding: 4px;
+  border-radius: 6px;
+  background: none;
+  box-shadow: none;
+}
+.cover-option:hover {
+  background-color: alpha(@window_fg_color, 0.06);
+}
+.cover-option:hover .cover {
+  box-shadow: 0 6px 18px alpha(#000, 0.22);
+}
+
 /* three-way status segmented control */
 .status-btn {
   background-color: alpha(@window_fg_color, 0.06);

@@ -211,6 +211,31 @@ def set_cover(con, book_id, cover_path):
     con.commit()
 
 
+# Columns that "Link to fetch details" may fill in from an external reference.
+# Whitelisted so the caller can't touch status/rating/dates through this path.
+_UPDATABLE = ("author", "year", "pages", "isbn", "olid", "description",
+              "cover_url")
+
+
+def update_fields(con, book_id, **fields):
+    """Update a whitelisted set of metadata columns in one statement. Unknown
+    keys are ignored; a no-op when nothing whitelisted is supplied."""
+    cols = [(k, v) for k, v in fields.items() if k in _UPDATABLE]
+    if not cols:
+        return
+    assignments = ", ".join(f"{name}=?" for name, _ in cols)
+    values = [value for _, value in cols] + [book_id]
+    con.execute(f"UPDATE books SET {assignments} WHERE id=?", values)
+    con.commit()
+
+
+def books_without_cover(con):
+    """Books whose cover_path is empty — targets for 'Look for missing covers'."""
+    return con.execute(
+        "SELECT * FROM books WHERE cover_path IS NULL OR cover_path=''"
+    ).fetchall()
+
+
 def delete_book(con, book_id):
     con.execute("DELETE FROM books WHERE id=?", (book_id,))
     con.commit()

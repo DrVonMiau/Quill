@@ -22,6 +22,11 @@ pill tabs, teal/gold accents) with its sibling app **Lyre**.
 - **Add books** by searching **Open Library or Google Books** (switchable), or
   **add manually** for titles not in either catalogue. Cover art and summaries
   are fetched automatically.
+- **Find covers online** with a preview picker (choose from up to five
+  candidates), a one-shot **"Look for missing covers"** sweep over the whole
+  library, or **link a book** to a Google Books URL, ISBN or Goodreads link to
+  backfill its missing author, year, pages, summary and cover.
+- Marking a book **Read** snaps its reading progress to 100%.
 - **Per-book tags/genres**, editable from the info panel.
 - **Import** an existing library from an **Openreads CSV export** and **export**
   your library back to a round-trippable CSV.
@@ -55,6 +60,7 @@ meson install -C _build      # installs the gschema so settings work
 | `src/library.py` | SQLite library (books, status, rating, notes, tags, progress, dates). Pure, no GTK. |
 | `src/openlibrary.py` | Open Library search + cover/summary download (stdlib only). |
 | `src/googlebooks.py` | Google Books search backend (same result shape as Open Library). |
+| `src/enrich.py` | Resolve a pasted Google Books link / ISBN / Goodreads link to book metadata. |
 | `src/csvimport.py` | Openreads CSV import parser. |
 | `src/csvexport.py` | CSV export writer (round-trips through the importer). |
 | `src/analytics.py` | Reading statistics for the Stats tab. |
