@@ -64,6 +64,7 @@ def connect():
     con.execute("PRAGMA foreign_keys=ON")
     con.executescript(_SCHEMA)
     _migrate(con)
+    _normalize_read_progress(con)
     con.commit()
     return con
 
@@ -73,6 +74,15 @@ def _migrate(con):
     for name, decl in _MIGRATIONS:
         if name not in have:
             con.execute(f"ALTER TABLE books ADD COLUMN {name} {decl}")
+
+
+def _normalize_read_progress(con):
+    """A finished book is 100% read, so fill in the progress of any Read book
+    whose page count is known but whose current page was left short — e.g. books
+    brought in through the CSV import before this rule existed."""
+    con.execute(
+        "UPDATE books SET current_page=pages "
+        "WHERE status='read' AND pages>0 AND current_page<pages")
 
 
 # ---------- reads ----------
@@ -136,6 +146,11 @@ def import_book(con, *, title, author="", year=0, pages=0, olid="", isbn="",
 
     status = status if status in STATUSES else "want"
     rating = max(0, min(5, rating))
+    current_page = max(0, current_page)
+    # A finished book is 100% read: snap its progress to the last page so the
+    # progress bar fills, mirroring what marking a book Read does in the UI.
+    if status == "read" and pages and current_page < pages:
+        current_page = pages
     cur = con.execute(
         """INSERT INTO books (olid, isbn, title, author, year, pages, status,
                               rating, notes, tags, current_page, description,
