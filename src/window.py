@@ -1207,6 +1207,16 @@ class QuillWindow(Adw.ApplicationWindow):
 
     # ---------- add via Open Library ----------
 
+    @staticmethod
+    def _dialog_body(dialog, content):
+        """Give an Adw.Dialog a header bar so it shows a visible close button
+        (Adw.Dialog adds the close button to a header bar automatically) and its
+        title, then set the content below it."""
+        toolbar = Adw.ToolbarView()
+        toolbar.add_top_bar(Adw.HeaderBar())
+        toolbar.set_content(content)
+        dialog.set_child(toolbar)
+
     def _open_add_dialog(self):
         dialog = Adw.Dialog()
         dialog.set_title("Add a Book")
@@ -1245,7 +1255,7 @@ class QuillWindow(Adw.ApplicationWindow):
         box.append(shelf_row)
         box.append(status_lbl)
         box.append(scroller)
-        dialog.set_child(box)
+        self._dialog_body(dialog, box)
 
         state = {"timer": 0, "results": [], "token": 0}
 
@@ -1430,7 +1440,7 @@ class QuillWindow(Adw.ApplicationWindow):
             dialog, title_row, author_row, year_row, pages_row, shelf_row, tags_row))
         box.append(add_btn)
 
-        dialog.set_child(box)
+        self._dialog_body(dialog, box)
         dialog.present(self)
         title_row.grab_focus()
 
