@@ -365,7 +365,14 @@
                             <property name="hexpand">true</property>
                             <property name="halign">fill</property>
                             <property name="valign">start</property>
-                            <property name="margin-end">16</property>
+                            <!-- Symmetric side margins keep the cover and rows
+                                 centred in the panel; the larger amount also
+                                 holds the right-aligned values clear of the
+                                 floating scrollbar. The bottom margin leaves a
+                                 gap once scrolled to the end. -->
+                            <property name="margin-start">24</property>
+                            <property name="margin-end">24</property>
+                            <property name="margin-bottom">40</property>
 
                             <child>
                               <object class="GtkBox" id="detail_cover_slot">

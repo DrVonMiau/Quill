@@ -70,11 +70,11 @@ POINTER_CURSOR = Gdk.Cursor.new_from_name("pointer")
 
 SPACE_L = 24
 INFO_WIDTH = 350          # the floating info panel's full width
-# The panel's content is inset from the right by this much (info-panel box
-# margin-end in the .ui) so the overlay scrollbar floats over padding, never
-# over the right-aligned detail values.
+# The panel content carries symmetric side margins (info-panel box in the .ui)
+# so the cover and rows stay centred and the right-aligned values sit clear of
+# the floating overlay scrollbar.
 PANEL_WIDTH = INFO_WIDTH
-DETAIL_COVER_W = 300      # cover width inside the info panel
+DETAIL_COVER_W = 280      # cover width inside the info panel
 
 
 @Gtk.Template(resource_path="/io/github/drvonmiau/Quill/window.ui")
@@ -964,20 +964,32 @@ class QuillWindow(Adw.ApplicationWindow):
         else:
             self._set_summary_text("No summary available.", placeholder=True)
 
+    def _set_summary_lines(self, expanded):
+        """Show the summary fully (expanded) or clamped to 5 ellipsized lines.
+        Expanding turns ellipsization OFF (with wrap on the label already wraps
+        to full height) rather than relying on set_lines(-1), which some GTK
+        builds render as a single line — the cause of the inverted toggle."""
+        if expanded:
+            self.detail_summary.set_ellipsize(Pango.EllipsizeMode.NONE)
+            self.detail_summary.set_lines(-1)
+        else:
+            self.detail_summary.set_ellipsize(Pango.EllipsizeMode.END)
+            self.detail_summary.set_lines(5)
+
     def _set_summary_text(self, text, placeholder=False):
         self._summary_expanded = False
         self.detail_summary.set_label(text)
         if placeholder or len(text) <= self._SUMMARY_TRUNCATE_AT:
-            self.detail_summary.set_lines(-1 if placeholder else 5)
+            self._set_summary_lines(expanded=True)  # short: show it all, no toggle
             self.detail_readmore_btn.set_visible(False)
         else:
-            self.detail_summary.set_lines(5)
+            self._set_summary_lines(expanded=False)
             self.detail_readmore_btn.set_label("Read more")
             self.detail_readmore_btn.set_visible(True)
 
     def _toggle_readmore(self):
         self._summary_expanded = not self._summary_expanded
-        self.detail_summary.set_lines(-1 if self._summary_expanded else 5)
+        self._set_summary_lines(self._summary_expanded)
         self.detail_readmore_btn.set_label(
             "Read less" if self._summary_expanded else "Read more")
 
