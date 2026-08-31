@@ -230,33 +230,10 @@ window.dark gridview.card-grid > child:selected .card-title {
 .info-panel viewport {
   background: none;
 }
-
-/* The info panel's scrollbar floats over the panel's right-edge padding (the
-   content is inset by a matching margin), so it never sits over the detail
-   values. Slim and quiet, it reads as part of the grey desktop. */
-.info-panel > scrollbar {
-  background: none;
-  border: none;
-}
-.info-panel > scrollbar trough {
-  background: none;
-  border: none;
-  min-width: 8px;
-}
-.info-panel > scrollbar slider {
-  min-width: 6px;
-  border-radius: 9999px;
-  background-color: alpha(@window_fg_color, 0.28);
-}
-.info-panel > scrollbar slider:hover {
-  background-color: alpha(@window_fg_color, 0.45);
-}
-.info-panel > scrollbar slider:active {
-  background-color: @quill_teal;
-}
-window.dark .info-panel > scrollbar slider:active {
-  background-color: @quill_teal_light;
-}
+/* The panel's scrollbar keeps GTK's default overlay behaviour — a slim
+   indicator that widens on hover — matching the paper card's scrollbar. The
+   content is inset from the right (info-panel box margin) so it never sits
+   over the detail values. */
 
 /* Candidate covers in the "Find Cover Online" picker: a plain framed tile that
    lifts on hover, mirroring the library grid's cover hover. */
