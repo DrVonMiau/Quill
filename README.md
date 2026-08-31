@@ -1,75 +1,90 @@
-# Quill
+<p align="center">
+  <img src="data/icons/hicolor/512x512/apps/io.github.drvonmiau.Quill.png" width="120" alt="Quill icon">
+</p>
 
-A calm, offline-first **reading tracker** for GNOME. Keep shelves for the books
-you want to read, are reading, and have finished; rate them and jot notes; and
-add titles in seconds by searching **Open Library**.
+<h1 align="center">Quill</h1>
 
-Built with GTK4 + libadwaita + PyGObject, packaged as a Flatpak on the GNOME
-runtime. It shares its visual language (grey desktop + paper card + segmented
-pill tabs, teal/gold accents) with its sibling app **Lyre**.
+<p align="center">
+  A calm, offline-first reading tracker for GNOME —<br>
+  no accounts, no cloud, no noise. Just the books you're reading, close at hand.
+</p>
+
+<p align="center">
+  <img src="data/screenshots/shelf.png" width="820" alt="Quill's Read shelf">
+</p>
+
+Quill keeps shelves for the books you want to read, are reading, and have
+finished. Rate them, jot a note, track where you are — and add new titles in
+seconds by searching Open Library or Google Books. Everything lives in a local
+library on your own machine.
+
+<p align="center">
+  <img src="data/screenshots/book.png" width="49%" alt="A selected book with its details">
+  <img src="data/screenshots/search.png" width="49%" alt="Searching the library">
+</p>
 
 ## Features
-- **Read / Reading / To read / Abandoned** shelves as segmented tabs.
-- **Master–detail** layout: a paper card of cover tiles with an info panel that
-  slides in when you select a book (cover, status, rating, dates, progress,
-  tags, summary).
-- A three-way **status control** to move a book between shelves in place;
-  moving to Reading/Read **captures the start/finish date** automatically, and
-  asks before changing a date that's already set.
-- **Reading dates** you can edit in a Monday-first calendar that **highlights
-  the whole started→finished span**, plus **reading progress** (current page)
-  with a slim progress bar.
-- **Add books** by searching **Open Library or Google Books** (switchable), or
-  **add manually** for titles not in either catalogue. Cover art and summaries
-  are fetched automatically.
-- **Find covers online** with a preview picker (choose from up to five
-  candidates), a one-shot **"Look for missing covers"** sweep over the whole
-  library, or **link a book** to a Google Books URL, ISBN or Goodreads link to
-  backfill its missing author, year, pages, summary and cover.
-- Marking a book **Read** snaps its reading progress to 100%.
-- **Per-book tags/genres**, editable from the info panel.
-- **Import** an existing library from an **Openreads CSV export** and **export**
-  your library back to a round-trippable CSV.
-- **Star ratings** and an autosaving per-book **summary**.
-- A **cover-size slider** to scale the grid tiles, plus title/author search.
-- Light and dark themes that track the system, in the teal & gold house palette.
 
-## Build & run (Flatpak)
+**Your shelves**
+- **Read · Reading · To read · Abandoned** shelves as segmented tabs
+- A **master–detail** layout: a paper card of covers with an info panel for the
+  selected book — cover, status, rating, dates, progress, tags and summary
+- A **three-way status control** that moves a book between shelves in place
+
+**Track your reading**
+- **Start and finish dates captured automatically**, and editable in a
+  Monday-first calendar that **highlights the whole started→finished span**
+- **Reading progress** by page, with a slim progress bar
+- **Star ratings**, **per-book tags**, and an autosaving **summary**
+
+**Fill your library fast**
+- **Add books** by searching **Open Library or Google Books** (switchable), or
+  **add manually** — cover art and summaries are fetched automatically
+- **Import** an existing library from an **Openreads CSV export**, and **export**
+  back to a round-trippable CSV
+- A **cover-size slider**, and search by title, author or tag
+
+## Install
+
+Grab the latest `.flatpak` bundle from the
+[**Releases**](https://github.com/DrVonMiau/quill/releases) page, then install
+and run it:
+
+```sh
+flatpak install --user io.github.drvonmiau.Quill.flatpak
+flatpak run io.github.drvonmiau.Quill
+```
+
+The first command may offer to pull in the GNOME runtime the app needs — say
+yes. You only need [Flatpak](https://flatpak.org/setup/) installed, which most
+Linux distributions already have.
+
+## Building from source
+
+Open the project in **GNOME Builder** and press Run — the included Flatpak
+manifest (`io.github.drvonmiau.Quill.json`) takes care of everything.
+
+Or with `flatpak-builder` directly:
+
 ```sh
 flatpak-builder --user --install --force-clean _flatpak io.github.drvonmiau.Quill.json
 flatpak run io.github.drvonmiau.Quill
 ```
 
-## Build & run (meson, for development)
-```sh
-meson setup _build
-meson compile -C _build
-meson install -C _build      # installs the gschema so settings work
-```
+## Part of a family
 
-## Roadmap ideas
-- Import from **Goodreads** (and other platforms) — the CSV importer already
-  handles Openreads; Goodreads' export shape is the next target.
-- Browse/filter the library by **tag**.
+Quill is one of three sibling apps that share a design language — the same calm,
+offline-first idea recast for different libraries:
 
-## Notes on the source layout
-| File | Responsibility |
-|------|----------------|
-| `src/main.py` | App entry / `do_activate`, builds `QuillWindow`. |
-| `src/window.py` | The whole UI: shelves, cover grid, book detail, add-via-search dialog. |
-| `src/library.py` | SQLite library (books, status, rating, notes, tags, progress, dates). Pure, no GTK. |
-| `src/openlibrary.py` | Open Library search + cover/summary download (stdlib only). |
-| `src/googlebooks.py` | Google Books search backend (same result shape as Open Library). |
-| `src/enrich.py` | Resolve a pasted Google Books link / ISBN / Goodreads link to book metadata. |
-| `src/csvimport.py` | Openreads CSV import parser. |
-| `src/csvexport.py` | CSV export writer (round-trips through the importer). |
-| `src/analytics.py` | Reading statistics for the Stats tab. |
-| `src/models.py` | The `Book` GObject model. |
-| `src/widgets.py` | The portrait `Cover` tile, `BarChart`, and Monday-first `DatePicker`. |
-| `src/window.ui` | GTK template. |
-| `src/style.css` | Styling (teal/gold accents). |
-| `io.github.drvonmiau.Quill.json` | Flatpak manifest. |
+- 📖 **Quill** — your reading *(you are here)*
+- 🎵 [**Lyre**](https://github.com/DrVonMiau/lyre) — your music
+- 🖼️ [**Easel**](https://github.com/DrVonMiau/easel) — your photos
 
-The app icon is the final artwork — a 512×512 PNG at
-`data/icons/hicolor/512x512/apps/io.github.drvonmiau.Quill.png`. A monochrome
-`-symbolic.svg` in `hicolor/symbolic/apps/` accompanies it for system contexts.
+## Built with
+
+GTK4 · libadwaita · PyGObject, packaged as a Flatpak on the GNOME runtime.
+
+## License
+
+Quill is free software, released under the
+[GNU GPL 3.0 or later](COPYING).

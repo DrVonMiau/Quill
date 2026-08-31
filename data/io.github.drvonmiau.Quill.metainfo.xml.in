@@ -34,6 +34,20 @@
 	<url type="homepage">https://github.com/DrVonMiau/quill</url>
 	<url type="bugtracker">https://github.com/DrVonMiau/quill/issues</url>
 	<url type="vcs-browser">https://github.com/DrVonMiau/quill</url>
+	<screenshots>
+		<screenshot type="default">
+			<image>https://raw.githubusercontent.com/DrVonMiau/quill/main/data/screenshots/shelf.png</image>
+			<caption>Your Read shelf, cover by cover</caption>
+		</screenshot>
+		<screenshot>
+			<image>https://raw.githubusercontent.com/DrVonMiau/quill/main/data/screenshots/book.png</image>
+			<caption>A book, with its reading details</caption>
+		</screenshot>
+		<screenshot>
+			<image>https://raw.githubusercontent.com/DrVonMiau/quill/main/data/screenshots/search.png</image>
+			<caption>Searching your library</caption>
+		</screenshot>
+	</screenshots>
 	<requires>
 		<display_length compare="ge">768</display_length>
 	</requires>
@@ -42,6 +56,18 @@
 		<control>pointing</control>
 	</supports>
 	<releases>
+		<release version="1.0.0" date="2026-08-31">
+			<description>
+				<p>Quill reaches 1.0 — its first stable release.</p>
+				<ul>
+					<li>Four shelves — Read, Reading, To read and Abandoned — in a master–detail layout</li>
+					<li>Add books from Open Library or Google Books, or by hand, with covers and summaries fetched for you</li>
+					<li>Reading dates on a span-highlighting calendar, page progress, star ratings and per-book tags</li>
+					<li>Import from an Openreads CSV export and export your library back out</li>
+					<li>Window chrome follows your system icon theme; refreshed screenshots and documentation</li>
+				</ul>
+			</description>
+		</release>
 		<release version="0.2.0" date="2026-08-25">
 			<description>
 				<p>A big feature release.</p>
